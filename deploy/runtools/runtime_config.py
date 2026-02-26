@@ -10,6 +10,7 @@ import pprint
 import logging
 import yaml
 import os
+import shlex
 import sys
 from fabric.operations import _stdoutString  # type: ignore
 from fabric.api import prefix, settings, local, run  # type: ignore
@@ -222,6 +223,9 @@ class RuntimeHWConfig:
         self.bitstream_tar = hwconfig_dict.get("bitstream_tar")
         self.driver_tar = hwconfig_dict.get("driver_tar")
 
+        # Optional extra Chisel args for driver builds
+        self.extra_chisel_options = hwconfig_dict.get("extra_chisel_options", "")
+
         self.platform = None
         self.driver_built = False
         self.tarball_built = False
@@ -402,6 +406,46 @@ class RuntimeHWConfig:
     def get_local_driver_path(self) -> str:
         """return relative local path of the driver used to run this sim."""
         return self.get_local_driver_dir() + self.get_local_driver_binaryname()
+
+    def _get_local_driver_abs_path(self) -> Path:
+        """Get absolute local path of the driver binary used to run this sim."""
+        return (Path(get_deploy_dir()) / self.get_local_driver_path()).resolve()
+
+    def _get_verilator_threads_stamp_path(self) -> Path:
+        """Get stamp path used to record verilator_threads used for this driver build."""
+        return Path(str(self._get_local_driver_abs_path()) + ".verilator_threads")
+
+    def _maybe_invalidate_stale_verilator_build(self) -> None:
+        """Invalidate stale verilator build artifacts when verilator_threads changes."""
+        if self.get_driver_build_target() not in ["verilator", "verilator-debug"]:
+            return
+
+        desired_threads = (
+            str(self.verilator_threads) if self.verilator_threads is not None else ""
+        )
+        driver_path = self._get_local_driver_abs_path()
+        csrc_path = Path(str(driver_path) + ".csrc")
+        stamp_path = self._get_verilator_threads_stamp_path()
+
+        previous_threads: Optional[str] = None
+        if stamp_path.exists():
+            previous_threads = stamp_path.read_text(encoding="utf-8").strip()
+
+        if previous_threads == desired_threads:
+            return
+
+        if driver_path.exists() or csrc_path.exists():
+            rootLogger.info(
+                "Detected verilator_threads change (%s -> %s). Removing stale driver artifacts.",
+                previous_threads,
+                desired_threads,
+            )
+            local(
+                f"rm -rf {shlex.quote(str(driver_path))} {shlex.quote(str(csrc_path))}"
+            )
+
+        stamp_path.parent.mkdir(parents=True, exist_ok=True)
+        stamp_path.write_text(desired_threads, encoding="utf-8")
 
     def local_quintuplet_path(self) -> Path:
         """return the local path of the quintuplet folder. the tarball that is created goes inside this folder"""
@@ -699,15 +743,35 @@ class RuntimeHWConfig:
             f"Building {self.driver_type_message} driver for {str(self.get_deployquintuplet_for_config())}"
         )
 
+        self._maybe_invalidate_stale_verilator_build()
+
         deploy_dir = get_deploy_dir()
         with InfoStreamLogger("stdout"), prefix(f"cd {deploy_dir}/../"), prefix(
             create_export_string({"RISCV", "PATH", "LD_LIBRARY_PATH"})
         ), prefix("source sourceme-manager.sh --skip-ssh-setup"), prefix("cd sim/"):
-            driverbuildcommand = f"make PLATFORM={self.get_platform()} TARGET_PROJECT={target_project} {extra_target_project_make_args(target_project, target_project_makefrag, deploy_dir)} DESIGN={design} TARGET_CONFIG={target_config} PLATFORM_CONFIG={platform_config} {self.get_driver_build_target()}"
+            extra_chisel_arg = (
+                f"EXTRA_CHISEL_OPTIONS={shlex.quote(self.extra_chisel_options)}"
+                if self.extra_chisel_options
+                else ""
+            )
+            verilator_threads_arg = (
+                f"VERILATOR_THREADS={self.verilator_threads}"
+                if self.verilator_threads is not None
+                else ""
+            )
+            driverbuildcommand = f"make PLATFORM={self.get_platform()} TARGET_PROJECT={target_project} {extra_target_project_make_args(target_project, target_project_makefrag, deploy_dir)} DESIGN={design} TARGET_CONFIG={target_config} PLATFORM_CONFIG={platform_config} {extra_chisel_arg} {verilator_threads_arg} {self.get_driver_build_target()}"
             buildresult = run(driverbuildcommand)
             self.handle_failure(
                 buildresult, "driver build", "firesim/sim", driverbuildcommand
             )
+
+        if self.get_driver_build_target() in ["verilator", "verilator-debug"]:
+            desired_threads = (
+                str(self.verilator_threads) if self.verilator_threads is not None else ""
+            )
+            stamp_path = self._get_verilator_threads_stamp_path()
+            stamp_path.parent.mkdir(parents=True, exist_ok=True)
+            stamp_path.write_text(desired_threads, encoding="utf-8")
 
         self.driver_built = True
 
@@ -821,6 +885,8 @@ class RuntimeBuildRecipeConfig(RuntimeHWConfig):
                 self.deploy_makefrag = abs_deploy_makefrag
 
         self.customruntimeconfig = build_recipe_dict["metasim_customruntimeconfig"]
+        self.extra_chisel_options = build_recipe_dict.get("extra_chisel_options", "")
+        self.verilator_threads = build_recipe_dict.get("verilator_threads", None)
         # note whether we've built a copy of the simulation driver for this hwconf
         self.driver_built = False
         self.metasim_host_simulator = default_metasim_host_sim

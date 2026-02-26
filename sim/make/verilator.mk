@@ -22,7 +22,8 @@ define make_verilator
                 GEN_FILE_BASENAME=$(BASE_FILE_NAME) \
                 GEN_DIR=$(GENERATED_DIR) \
                 DRIVER="$(DRIVER_CC)" \
-		VERILATOR_FLAGS="$(EXTRA_VERILATOR_FLAGS)"
+		VERILATOR_FLAGS="$(EXTRA_VERILATOR_FLAGS)" \
+		VERILATOR_THREADS="$(VERILATOR_THREADS)"
 endef
 
 $(verilator): $(verilator_driver_deps)

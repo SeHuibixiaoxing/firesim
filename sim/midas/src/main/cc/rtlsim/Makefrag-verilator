@@ -34,11 +34,13 @@ override VERILATOR_FLAGS := \
 	--output-split-cfuncs 100 \
 	-Wall \
 	-Wno-UNUSEDSIGNAL \
+	-Wno-UNOPTTHREADS \
 	-Wno-DECLFILENAME \
 	-Wno-VARHIDDEN \
 	-Wno-UNDRIVEN \
 	-CFLAGS "$(CXXFLAGS) -DVERILATOR" \
 	$(if $(LDFLAGS),-LDFLAGS "$(LDFLAGS)",) \
+	$(if $(VERILATOR_THREADS),--threads $(VERILATOR_THREADS) --threads-dpi all,) \
 	$(SIM_PREPROC_DEFINES) \
 	$(VERILATOR_FLAGS)
 

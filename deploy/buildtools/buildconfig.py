@@ -1,5 +1,6 @@
 from __future__ import annotations
 from enum import Enum, auto
+import shlex
 import sys
 import logging
 
@@ -117,6 +118,7 @@ class BuildConfig:
 
         self.DESIGN = recipe_config_dict["DESIGN"]
         self.TARGET_CONFIG = recipe_config_dict["TARGET_CONFIG"]
+        self.extra_chisel_options = recipe_config_dict.get("extra_chisel_options", "")
 
         if (
             "deploy_triplet" in recipe_config_dict.keys()
@@ -260,7 +262,12 @@ class BuildConfig:
         Returns:
             Fully specified make command.
         """
-        return f"""make PLATFORM={self.PLATFORM} TARGET_PROJECT={self.TARGET_PROJECT} {extra_target_project_make_args(self.TARGET_PROJECT, self.TARGET_PROJECT_MAKEFRAG, deploy_dir)} DESIGN={self.DESIGN} TARGET_CONFIG={self.TARGET_CONFIG} PLATFORM_CONFIG={self.PLATFORM_CONFIG} {recipe}"""
+        extra_chisel_arg = (
+            f"EXTRA_CHISEL_OPTIONS={shlex.quote(self.extra_chisel_options)}"
+            if self.extra_chisel_options
+            else ""
+        )
+        return f"""make PLATFORM={self.PLATFORM} TARGET_PROJECT={self.TARGET_PROJECT} {extra_target_project_make_args(self.TARGET_PROJECT, self.TARGET_PROJECT_MAKEFRAG, deploy_dir)} DESIGN={self.DESIGN} TARGET_CONFIG={self.TARGET_CONFIG} PLATFORM_CONFIG={self.PLATFORM_CONFIG} {extra_chisel_arg} {recipe}"""
 
     def __repr__(self) -> str:
         return f"< {type(self)}(name={self.name!r}, build_config_file={self.build_config_file!r}) @{id(self)} >"
