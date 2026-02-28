@@ -199,6 +199,7 @@ class RuntimeHWConfig:
     driver_name_prefix: str
     local_driver_base_dir: str
     driver_type_message: str
+    verilator_threads: Optional[int]
     """User-specified, URI path to driver tarball"""
     driver_tar: Optional[str]
 
@@ -225,6 +226,7 @@ class RuntimeHWConfig:
 
         # Optional extra Chisel args for driver builds
         self.extra_chisel_options = hwconfig_dict.get("extra_chisel_options", "")
+        self.verilator_threads = hwconfig_dict.get("verilator_threads", None)
 
         self.platform = None
         self.driver_built = False
