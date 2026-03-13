@@ -77,7 +77,20 @@ class BitBuilder(metaclass=abc.ABCMeta):
 
         deploy_dir = get_deploy_dir()
         with InfoStreamLogger("stdout"), prefix(f"cd {deploy_dir}/../"), prefix(
-            create_export_string({"RISCV", "PATH", "LD_LIBRARY_PATH"})
+            create_export_string(
+                {
+                    "RISCV",
+                    "PATH",
+                    "LD_LIBRARY_PATH",
+                    "JAVA_HEAP_SIZE",
+                    "JAVA_TOOL_OPTIONS",
+                    "SBT_OPTS",
+                    "MAKEFLAGS",
+                    "VERILATOR_MAKEFLAGS",
+                    "FIRESIM_VIVADO_JOBS",
+                    "FIRESIM_VIVADO_SYNTH_MAX_THREADS",
+                }
+            )
         ), prefix("source sourceme-manager.sh --skip-ssh-setup"), InfoStreamLogger(
             "stdout"
         ), prefix(
@@ -93,7 +106,20 @@ class BitBuilder(metaclass=abc.ABCMeta):
 
         deploy_dir = get_deploy_dir()
         with InfoStreamLogger("stdout"), prefix(f"cd {deploy_dir}/../"), prefix(
-            create_export_string({"RISCV", "PATH", "LD_LIBRARY_PATH"})
+            create_export_string(
+                {
+                    "RISCV",
+                    "PATH",
+                    "LD_LIBRARY_PATH",
+                    "JAVA_HEAP_SIZE",
+                    "JAVA_TOOL_OPTIONS",
+                    "SBT_OPTS",
+                    "MAKEFLAGS",
+                    "VERILATOR_MAKEFLAGS",
+                    "FIRESIM_VIVADO_JOBS",
+                    "FIRESIM_VIVADO_SYNTH_MAX_THREADS",
+                }
+            )
         ), prefix("source sourceme-manager.sh --skip-ssh-setup"), prefix("cd sim/"):
             run(self.build_config.make_recipe("driver", deploy_dir))
 
@@ -804,7 +830,22 @@ class XilinxAlveoBitBuilder(BitBuilder):
         fpga_frequency = self.build_config.get_frequency()
         build_strategy = self.build_config.get_strategy().name
 
-        with InfoStreamLogger("stdout"), settings(warn_only=True):
+        with InfoStreamLogger("stdout"), prefix(
+            create_export_string(
+                {
+                    "RISCV",
+                    "PATH",
+                    "LD_LIBRARY_PATH",
+                    "JAVA_HEAP_SIZE",
+                    "JAVA_TOOL_OPTIONS",
+                    "SBT_OPTS",
+                    "MAKEFLAGS",
+                    "VERILATOR_MAKEFLAGS",
+                    "FIRESIM_VIVADO_JOBS",
+                    "FIRESIM_VIVADO_SYNTH_MAX_THREADS",
+                }
+            )
+        ), settings(warn_only=True):
             alveo_result = run(
                 f"{cl_dir}/build-bitstream.sh --cl_dir {cl_dir} --frequency {fpga_frequency} --strategy {build_strategy} --board {self.BOARD_NAME}"
             )

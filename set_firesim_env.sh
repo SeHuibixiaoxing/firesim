@@ -21,6 +21,9 @@ fi
 CPU_THREADS=$1
 JAVA_HEAP=$2
 
+# 统一使用 FireSim 根目录，避免在 deploy/ 或其他目录 source 时路径错误
+FIRESIM_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 echo "========================================"
 echo "FireSim 环境变量设置"
 echo "========================================"
@@ -39,24 +42,40 @@ echo "[已设置] VERILATOR_MAKEFLAGS=${VERILATOR_MAKEFLAGS}"
 # =============================================================================
 
 # Java 工具选项 (堆内存、栈大小、GC等)
-export JAVA_TOOL_OPTIONS="-Xmx${JAVA_HEAP} -Xss8M -XX:+UseParallelGC -Djava.io.tmpdir=${PWD}/.java_tmp"
+export JAVA_HEAP_SIZE="${JAVA_HEAP}"
+export JAVA_TOOL_OPTIONS="-Xmx${JAVA_HEAP} -Xss8M -XX:+UseParallelGC -Djava.io.tmpdir=${FIRESIM_ROOT}/.java_tmp"
 echo "[已设置] JAVA_TOOL_OPTIONS=${JAVA_TOOL_OPTIONS}"
+echo "[已设置] JAVA_HEAP_SIZE=${JAVA_HEAP_SIZE}"
 
 # SBT 选项 (并行编译、缓存目录等)
-export SBT_OPTS="-Dsbt.ivy.home=${PWD}/.ivy2 \
-                 -Dsbt.global.base=${PWD}/.sbt \
-                 -Dsbt.boot.directory=${PWD}/.sbt/boot/ \
+export SBT_OPTS="-Dsbt.ivy.home=${FIRESIM_ROOT}/.ivy2 \
+                 -Dsbt.global.base=${FIRESIM_ROOT}/.sbt \
+                 -Dsbt.boot.directory=${FIRESIM_ROOT}/.sbt/boot/ \
                  -Dsbt.color=always \
                  -Dsbt.supershell=false \
                  -Dsbt.server.forcestart=true \
                  -Dsbt.parallel=true"
 echo "[已设置] SBT_OPTS=${SBT_OPTS}"
 
+# 预先创建 Java/SBT 需要的目录，避免运行时因路径不存在导致失败
+mkdir -p "${FIRESIM_ROOT}/.java_tmp" "${FIRESIM_ROOT}/.ivy2" "${FIRESIM_ROOT}/.sbt/boot"
+
 # =============================================================================
 # 3. 可选: MAKE 并行编译设置
 # =============================================================================
 export MAKEFLAGS="-j${CPU_THREADS}"
 echo "[已设置] MAKEFLAGS=${MAKEFLAGS}"
+
+# =============================================================================
+# 4. Vivado 并行任务数（避免大设计综合时 Vivado 进程并发过高导致崩溃）
+# =============================================================================
+# 可在 source 前自行 export FIRESIM_VIVADO_JOBS 覆盖默认值
+export FIRESIM_VIVADO_JOBS="${FIRESIM_VIVADO_JOBS:-1}"
+echo "[已设置] FIRESIM_VIVADO_JOBS=${FIRESIM_VIVADO_JOBS}"
+
+# Vivado 单个综合任务内部线程数（和 jobs 不同）。大设计下建议设为 1 提高稳定性。
+export FIRESIM_VIVADO_SYNTH_MAX_THREADS="${FIRESIM_VIVADO_SYNTH_MAX_THREADS:-1}"
+echo "[已设置] FIRESIM_VIVADO_SYNTH_MAX_THREADS=${FIRESIM_VIVADO_SYNTH_MAX_THREADS}"
 
 echo ""
 echo "========================================"
@@ -71,3 +90,5 @@ echo "如需验证设置:"
 echo "  echo \$VERILATOR_MAKEFLAGS"
 echo "  echo \$JAVA_TOOL_OPTIONS"
 echo "  echo \$SBT_OPTS"
+echo "  echo \$FIRESIM_VIVADO_JOBS"
+echo "  echo \$FIRESIM_VIVADO_SYNTH_MAX_THREADS"

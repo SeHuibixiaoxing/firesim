@@ -21,7 +21,6 @@ from pathlib import Path
 from uuid import uuid1
 from tempfile import TemporaryDirectory
 import hashlib
-import json
 
 from awstools.awstools import aws_resource_names
 from awstools.afitools import (
@@ -749,7 +748,18 @@ class RuntimeHWConfig:
 
         deploy_dir = get_deploy_dir()
         with InfoStreamLogger("stdout"), prefix(f"cd {deploy_dir}/../"), prefix(
-            create_export_string({"RISCV", "PATH", "LD_LIBRARY_PATH"})
+            create_export_string(
+                {
+                    "RISCV",
+                    "PATH",
+                    "LD_LIBRARY_PATH",
+                    "JAVA_HEAP_SIZE",
+                    "JAVA_TOOL_OPTIONS",
+                    "SBT_OPTS",
+                    "MAKEFLAGS",
+                    "VERILATOR_MAKEFLAGS",
+                }
+            )
         ), prefix("source sourceme-manager.sh --skip-ssh-setup"), prefix("cd sim/"):
             extra_chisel_arg = (
                 f"EXTRA_CHISEL_OPTIONS={shlex.quote(self.extra_chisel_options)}"

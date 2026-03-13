@@ -211,6 +211,7 @@ class InstanceDeployManager(metaclass=abc.ABCMeta):
                     remote_dir=pjoin(remote_sim_rsync_dir, remote_path),
                     ssh_opts="-o StrictHostKeyChecking=no",
                     extra_opts="-L",
+                    default_opts="-pthrv",
                     capture=True,
                 )
                 rootLogger.debug(rsync_cap)
@@ -1116,6 +1117,7 @@ class XilinxAlveoInstanceDeployManager(InstanceDeployManager):
                     remote_dir=remote_sim_dir,
                     ssh_opts="-o StrictHostKeyChecking=no",
                     extra_opts="-L -p",
+                    default_opts="-pthrv",
                     capture=True,
                 )
                 rootLogger.debug(rsync_cap)
@@ -1227,6 +1229,7 @@ class XilinxAlveoInstanceDeployManager(InstanceDeployManager):
                 remote_dir=pjoin(remote_sim_rsync_dir, remote_path),
                 ssh_opts="-o StrictHostKeyChecking=no",
                 extra_opts="-L",
+                default_opts="-pthrv",
                 capture=True,
             )
             rootLogger.debug(rsync_cap)
@@ -1239,6 +1242,7 @@ class XilinxAlveoInstanceDeployManager(InstanceDeployManager):
             remote_dir=remote_sim_dir + "/",
             ssh_opts="-o StrictHostKeyChecking=no",
             extra_opts="-L -p",
+            default_opts="-pthrv",
             capture=True,
         )
         rootLogger.debug(rsync_cap)
