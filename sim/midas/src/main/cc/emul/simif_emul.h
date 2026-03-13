@@ -245,7 +245,7 @@ private:
   // waits on the condition variable until the simulator allows it to proceed.
   std::mutex driver_mutex;
   std::condition_variable driver_cond;
-  bool driver_flag;
+  std::atomic<bool> driver_flag;
 
   // Synchronisation primitives blocking the simulator.  The simulator thread
   // is the main thread, invoking the DPI tick function.  After information is
@@ -253,7 +253,7 @@ private:
   // variables until the driver performs a tick.
   std::mutex rtlsim_mutex;
   std::condition_variable rtlsim_cond;
-  bool rtlsim_flag;
+  std::atomic<bool> rtlsim_flag;
 };
 
 #endif // __SIMIF_EMUL_H

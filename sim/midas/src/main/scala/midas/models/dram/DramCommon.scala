@@ -573,48 +573,56 @@ class CommandBusMonitor extends Module {
     val autoPRE = Input(Bool())
   })
 
+  // The DRAM command stream trace is extremely verbose and can dominate metasim runtime
+  // on DMA-heavy workloads. Keep it compile-time disabled by default and only
+  // re-enable via source edit when debugging the DRAM model itself.
+  private val traceEnabled = false.B
+
   val cycleCounter = RegInit(1.U(32.W))
   val lastCommand  = RegInit(0.U(32.W))
   cycleCounter := cycleCounter + 1.U
-  when(io.cmd =/= cmd_nop) {
-    lastCommand := cycleCounter
-    when(lastCommand + 1.U =/= cycleCounter) { printf("nop(%d);\n", cycleCounter - lastCommand - 1.U) }
-  }
 
-  switch(io.cmd) {
-    is(cmd_act) {
-      printf("activate(%d, %d, %d); // %d\n", io.rank, io.bank, io.row, cycleCounter)
+  when(traceEnabled) {
+    when(io.cmd =/= cmd_nop) {
+      lastCommand := cycleCounter
+      when(lastCommand + 1.U =/= cycleCounter) { printf("nop(%d);\n", cycleCounter - lastCommand - 1.U) }
     }
-    is(cmd_casr) {
-      val autoPRE   = io.autoPRE
-      val burstChop = false.B
-      val column    = 0.U // Don't care since we aren't checking data
-      printf("read(%d, %d, %d, %x, %x); // %d\n", io.rank, io.bank, column, autoPRE, burstChop, cycleCounter)
-    }
-    is(cmd_casw) {
-      val autoPRE   = io.autoPRE
-      val burstChop = false.B
-      val column    = 0.U // Don't care since we aren't checking data
-      val mask      = 0.U // Don't care since we aren't checking data
-      val data      = 0.U // Don't care since we aren't checking data
-      printf(
-        "write(%d, %d, %d, %x, %x, %d, %d); // %d\n",
-        io.rank,
-        io.bank,
-        column,
-        autoPRE,
-        burstChop,
-        mask,
-        data,
-        cycleCounter,
-      )
-    }
-    is(cmd_ref) {
-      printf("refresh(%d); // %d\n", io.rank, cycleCounter)
-    }
-    is(cmd_pre) {
-      val preAll = false.B
-      printf("precharge(%d,%d,%d); // %d\n", io.rank, io.bank, preAll, cycleCounter)
+
+    switch(io.cmd) {
+      is(cmd_act) {
+        printf("activate(%d, %d, %d); // %d\n", io.rank, io.bank, io.row, cycleCounter)
+      }
+      is(cmd_casr) {
+        val autoPRE   = io.autoPRE
+        val burstChop = false.B
+        val column    = 0.U // Don't care since we aren't checking data
+        printf("read(%d, %d, %d, %x, %x); // %d\n", io.rank, io.bank, column, autoPRE, burstChop, cycleCounter)
+      }
+      is(cmd_casw) {
+        val autoPRE   = io.autoPRE
+        val burstChop = false.B
+        val column    = 0.U // Don't care since we aren't checking data
+        val mask      = 0.U // Don't care since we aren't checking data
+        val data      = 0.U // Don't care since we aren't checking data
+        printf(
+          "write(%d, %d, %d, %x, %x, %d, %d); // %d\n",
+          io.rank,
+          io.bank,
+          column,
+          autoPRE,
+          burstChop,
+          mask,
+          data,
+          cycleCounter,
+        )
+      }
+      is(cmd_ref) {
+        printf("refresh(%d); // %d\n", io.rank, cycleCounter)
+      }
+      is(cmd_pre) {
+        val preAll = false.B
+        printf("precharge(%d,%d,%d); // %d\n", io.rank, io.bank, preAll, cycleCounter)
+      }
     }
   }
 }

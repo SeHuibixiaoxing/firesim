@@ -54,12 +54,19 @@ override CXXFLAGS += -std=c++20
 
 # Models of FPGA primitives that are used in host-level sim, but not in FPGATop
 sim_fpga_resource_models := $(v_dir)/BUFGCE.v
+# Some target configs emit plusarg_reader as a standalone file while others
+# inline the module into $(DESIGN_V). Include the extra file only when needed.
+plusarg_reader_defined_in_design := $(shell [ -f $(DESIGN_V) ] && grep -Eq "^[[:space:]]*module[[:space:]]+plusarg_reader\\b" $(DESIGN_V) && echo 1)
+plusarg_reader_v := $(if $(plusarg_reader_defined_in_design),,$(wildcard $(GEN_DIR)/plusarg_reader.v))
 
 emul_dir   := $(midas_dir)/emul
 emul_h     := $(driver_h) $(bridge_h) $(emul_dir)/simif_emul.h $(emul_dir)/mmio.h $(emul_dir)/mm.h $(midas_dir)/entry.h $(emul_dir)/qsfp.h
 # This includes c sources and static libraries
-emul_cc    := $(DRIVER) $(bridge_cc) $(emul_dir)/simif_emul.cc $(emul_dir)/mmio.cc $(emul_dir)/mm.cc $(emul_dir)/dpi.cc $(midas_dir)/entry.cc $(emul_dir)/qsfp.cc
-emul_v     := $(design_vh) $(DESIGN_V) $(sim_fpga_resource_models)
+# Keep the Verilator-generated emulation main. Linking main.cc here bypasses
+# the generated scheduler and prevents simulator_tick() from ever being called.
+emul_driver_cc := $(filter-out $(midas_dir)/main.cc main.cc,$(DRIVER))
+emul_cc    := $(emul_driver_cc) $(bridge_cc) $(emul_dir)/simif_emul.cc $(emul_dir)/mmio.cc $(emul_dir)/mm.cc $(emul_dir)/dpi.cc $(midas_dir)/entry.cc $(emul_dir)/qsfp.cc
+emul_v     := $(design_vh) $(DESIGN_V) $(sim_fpga_resource_models) $(plusarg_reader_v)
 
 TB := emul
 CLOCK_PERIOD ?= 1.0

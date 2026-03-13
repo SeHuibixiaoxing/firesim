@@ -119,7 +119,7 @@ class F1Config
           )
         )
       case FPGAManagedAXI4Key          => None
-      case CtrlNastiKey                => NastiParameters(32, 25, 12)
+      case CtrlNastiKey                => NastiParameters(32, 25, 1)
       case HostMemChannelKey           =>
         HostMemChannelParams(
           size      = 0x400000000L, // 16 GiB

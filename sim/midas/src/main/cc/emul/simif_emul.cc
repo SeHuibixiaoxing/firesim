@@ -185,7 +185,7 @@ void simif_emul_t::start_driver(simulation_t &sim) {
     // Wait for the target thread to yield and enter the RTL simulator.
     // The target thread is waken up when the DPI tick function is
     // ready to transfer data to it.
-    rtlsim_cond.wait(lock, [&] { return rtlsim_flag; });
+    rtlsim_cond.wait(lock, [&] { return rtlsim_flag.load(); });
   }
 }
 
@@ -301,7 +301,7 @@ void simif_emul_t::do_tick() {
   }
   {
     std::unique_lock<std::mutex> lock(driver_mutex);
-    driver_cond.wait(lock, [&] { return driver_flag; });
+    driver_cond.wait(lock, [&] { return driver_flag.load(); });
   }
 }
 
@@ -315,7 +315,7 @@ bool simif_emul_t::to_sim() {
   }
   {
     std::unique_lock<std::mutex> lock(rtlsim_mutex);
-    rtlsim_cond.wait(lock, [&] { return rtlsim_flag || finished; });
+    rtlsim_cond.wait(lock, [&] { return rtlsim_flag.load() || finished.load(); });
   }
-  return finished;
+  return finished.load();
 }
