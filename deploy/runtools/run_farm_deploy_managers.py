@@ -1,4 +1,4 @@
-""" Run Farm management. """
+"""Run Farm management."""
 
 from __future__ import annotations
 
@@ -525,7 +525,7 @@ class InstanceDeployManager(metaclass=abc.ABCMeta):
 
                 do_terminate()
 
-                return {"switches": {}, "sims": {}}
+                return {"switches": {}, "sims": {}, "pipes": {}}
             else:
                 # get the status of the switch sims
                 switchescompleteddict = {
@@ -574,7 +574,7 @@ class InstanceDeployManager(metaclass=abc.ABCMeta):
                 # this can never happen in the cycle-accurate case at a point where we care
                 # about switch status, so don't bother to populate it
                 jobnames_to_completed = {jname: True for jname in jobnames}
-                return {"sims": jobnames_to_completed, "switches": {}}
+                return {"sims": jobnames_to_completed, "switches": {}, "pipes": {}}
 
             # at this point, all jobs are NOT completed. so, see how they're doing now:
             instance_screen_status = self.running_simulations()
@@ -688,7 +688,7 @@ class EC2InstanceDeployManager(InstanceDeployManager):
             with prefix("cd ../"):
                 # use local version of aws_fpga on run farm nodes
                 aws_fpga_upstream_version = local(
-                    "git -C platforms/f1/aws-fpga describe --tags --always --dirty",
+                    "git -C platforms/f2/aws-fpga-firesim-f2 describe --tags --always --dirty",
                     capture=True,
                 )
                 if "-dirty" in aws_fpga_upstream_version:
@@ -701,8 +701,8 @@ class EC2InstanceDeployManager(InstanceDeployManager):
                 )
             )
             with warn_only():
-                run("git clone https://github.com/aws/aws-fpga")
-                run("cd aws-fpga && git checkout " + aws_fpga_upstream_version)
+                run("git clone https://github.com/firesim/aws-fpga-firesim-f2.git aws-fpga") #rh: "git clone https://github.com/aws/aws-fpga"
+                run("cd aws-fpga && git checkout " + aws_fpga_upstream_version) #rh: keep in mind that if ts says dirty it will fail but continue doing sdk_setup
             with cd(f"/home/{os.environ['USER']}/aws-fpga"):
                 run("source sdk_setup.sh")
 
@@ -714,12 +714,12 @@ class EC2InstanceDeployManager(InstanceDeployManager):
             self.instance_logger("""Copying AWS FPGA XDMA driver to remote node.""")
             run(f"mkdir -p /home/{os.environ['USER']}/xdma/")
             put(
-                "../platforms/f1/aws-fpga/sdk/linux_kernel_drivers",
+                "../platforms/f2/aws-fpga-firesim-f2/sdk/dma_ip_drivers/XDMA/linux-kernel",
                 f"/home/{os.environ['USER']}/xdma/",
                 mirror_local_mode=True,
             )
             with cd(
-                f"/home/{os.environ['USER']}/xdma/linux_kernel_drivers/xdma/"
+                f"/home/{os.environ['USER']}/xdma/linux-kernel/xdma/"
             ), prefix("export PATH=/usr/bin:$PATH"):
                 # prefix only needed if conda env is earlier in PATH
                 # see build-setup-nolog.sh for explanation.
@@ -843,7 +843,7 @@ class EC2InstanceDeployManager(InstanceDeployManager):
             self.instance_logger("Loading XDMA Driver Kernel Module.")
             # TODO: can make these values automatically be chosen based on link lat
             run(
-                f"sudo insmod /home/{os.environ['USER']}/xdma/linux_kernel_drivers/xdma/xdma.ko poll_mode=1"
+                f"sudo insmod /home/{os.environ['USER']}/xdma/linux-kernel/xdma/xdma.ko poll_mode=1"  # rh: renamed to fit submodule 
             )
 
     def start_ila_server(self) -> None:
@@ -883,10 +883,10 @@ class EC2InstanceDeployManager(InstanceDeployManager):
                 self.get_and_install_aws_fpga_sdk()
                 # unload any existing edma/xdma/xocl
                 self.unload_xrt_and_xocl()
-                # copy xdma driver
-                self.fpga_node_xdma()
-                # load xdma
-                self.load_xdma()
+                # # copy xdma driver # rh: commenting out for now to prevent loading of xdma.
+                # self.fpga_node_xdma()
+                # # load xdma
+                # self.load_xdma()
 
             # setup nbd/qcow infra
             self.sim_node_qcow()
@@ -898,8 +898,8 @@ class EC2InstanceDeployManager(InstanceDeployManager):
                 self.clear_fpgas()
                 self.flash_fpgas()
 
-                # re-load XDMA
-                self.load_xdma()
+                # # re-load XDMA # rh: commenting out for now to prevent loading of xdma.
+                # self.load_xdma()
 
                 # restart (or start form scratch) ila server
                 self.kill_ila_server()
@@ -915,7 +915,7 @@ class EC2InstanceDeployManager(InstanceDeployManager):
                 self.copy_pipe_slot_infrastructure(slotno)
 
     def enumerate_fpgas(self, uridir: str) -> None:
-        """FPGAs are enumerated already with F1"""
+        """FPGAs are enumerated already with F2"""
         return
 
     def terminate_instance(self) -> None:
@@ -1375,6 +1375,9 @@ class XilinxVCU118InstanceDeployManager(InstanceDeployManager):
                 run(f"sudo {cmd}", shell=True)
             else:
                 self.instance_logger("XDMA Driver Kernel Module already loaded.")
+            cmd = f"{script_path}/firesim-chmod-xdma-perm"
+            check_script(cmd)
+            run(f"sudo {cmd}")
 
     def load_xvsec(self) -> None:
         """load the xvsec kernel modules."""
@@ -1408,9 +1411,9 @@ class XilinxVCU118InstanceDeployManager(InstanceDeployManager):
                 self.instance_logger(f"""Determine BDF for {slotno}""")
                 collect = run("lspci | grep -i xilinx")
 
-                # TODO: is hardcoded cap 0x1 correct?
                 # TODO: is "Partial Reconfig Clear File" useful (see xvsecctl help)?
                 bdfs = [
+                    # capno is hardcoded to 0x1 otherwise xvsecctl program fails
                     {"busno": "0x" + i[:2], "devno": "0x" + i[3:5], "capno": "0x1"}
                     for i in collect.splitlines()
                     if len(i.strip()) >= 0
@@ -1436,10 +1439,10 @@ class XilinxVCU118InstanceDeployManager(InstanceDeployManager):
                 self.instance_logger(f"""Determine BDF for {slotno}""")
                 collect = run("lspci | grep -i xilinx")
 
-                # TODO: is hardcoded cap 0x1 correct?
                 # TODO: is "Partial Reconfig Clear File" useful (see xvsecctl help)?
                 bdfs = [
-                    {"busno": "0x" + i[:2], "devno": "0x" + i[3:5], "capno": "0x1"}
+                    # Cannot hardcode capno to 0x1 here, if 0x1 change permissions sometimes cannot find the device in /sys/bus/pci/devices/
+                    {"busno": "0x" + i[:2], "devno": "0x" + i[3:5], "capno": "0x" + i[6:7]}
                     for i in collect.splitlines()
                     if len(i.strip()) >= 0
                 ]

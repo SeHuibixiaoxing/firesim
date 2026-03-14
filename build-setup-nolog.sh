@@ -134,6 +134,14 @@ END_CONDA_ACTIVATE
 fi
 
 
+# rh: since chipyard and firesim standalone install fab-classic as a wheel with paramiko-ng
+# the least invasive way i could think of was to uninstall then reinstall here with a specified
+# environment variable to have fab-classic depend on paramiko=2.9.0 instead, which has RSA-SHA2 support
+echo $'\033[0;32mrh:\033[0m Replacing paramiko-ng with paramiko to add rsa2 ssh support for fab-classic'
+pip uninstall -y paramiko-ng paramiko fab-classic 2>/dev/null || true
+PARAMIKO_REPLACE=1 pip install --no-cache-dir --no-binary fab-classic 'fab-classic>=1.19.2' #rh: see https://pypi.org/project/fab-classic/
+pip install --force-reinstall "paramiko==2.9.0"
+
 # init all submodules except for chipyard
 git config submodule.target-design/chipyard.update none
 git submodule update --init --recursive
@@ -154,25 +162,23 @@ cd "$FDIR"
 #### EC2-only setup ####
 
 # see if the instance info page exists. if not, we are not on ec2.
-# this is one of the few methods that works without sudo
-if wget -T 1 -t 3 -O /dev/null http://169.254.169.254/latest/; then
+# rh: yet another HTTPS issue that needs to be fixed. i swear on god they use this for the most random things sometimes
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"\
+         --connect-timeout 1 -m 3)
+if [ -n "$TOKEN" ]; then
 
     (
+        echo $'\033[0;32mrh:\033[0m IMDSv2 check passed, this is an EC2 instance'
+
         # ensure that we're using the system toolchain to build the kernel modules
         # newer gcc has --enable-default-pie and older kernels think the compiler
         # is broken unless you pass -fno-pie but then I was encountering a weird
         # error about string.h not being found
         export PATH=/usr/bin:$PATH
 
-        cd "$FDIR/platforms/f1/aws-fpga/sdk/linux_kernel_drivers/xdma"
-        make
-
-        # the only ones missing are libguestfs-tools
-        sudo yum install -y libguestfs-tools bc
-
-        # Setup for using qcow2 images
-        cd "$FDIR"
-        ./scripts/install-nbd-kmod.sh
+        # TODO: Update for xdma for f2
+        # cd "$FDIR/platforms/f1/aws-fpga/sdk/linux_kernel_drivers/xdma" 
+        # make
     )
 
     (
@@ -183,16 +189,16 @@ if wget -T 1 -t 3 -O /dev/null http://169.254.169.254/latest/; then
             export CPPFLAGS="${CPPFLAGS/-DNDEBUG/}"
         fi
 
-
-        # Source {sdk,hdk}_setup.sh once on this machine to build aws libraries and
-        # pull down some IP, so we don't have to waste time doing it each time on
-        # worker instances
-        AWSFPGA="$FDIR/platforms/f1/aws-fpga"
+        # Source hdk_setup.sh once on this machine to pull down shell DCP and IP,
+        # so we don't have to waste time doing it each time on worker instances
+        AWSFPGA="$FDIR/platforms/f2/aws-fpga-firesim-f2"
         cd "$AWSFPGA"
         bash -c "source ./sdk_setup.sh"
         bash -c "source ./hdk_setup.sh"
     )
 
+else
+    echo $'\033[0;32mrh:\033[0m IMDSv2 token empty/failed, skipping EC2 specific setup stuff'
 fi
 
 cd "$FDIR"

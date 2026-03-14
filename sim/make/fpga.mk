@@ -18,8 +18,8 @@ else ifeq ($(PLATFORM), xilinx_vcu118)
 board_dir          := $(platforms_dir)/xilinx_vcu118/garnet-firesim
 else ifeq ($(PLATFORM), rhsresearch_nitefury_ii)
 board_dir          := $(platforms_dir)/rhsresearch_nitefury_ii/NiteFury-and-LiteFury-firesim/Sample-Projects/Project-0
-else ifeq ($(PLATFORM), f1)
-board_dir 	   := $(platforms_dir)/f1/aws-fpga/hdk/cl/developer_designs
+else ifeq ($(PLATFORM), f2)
+board_dir 	   := $(platforms_dir)/f2/aws-fpga-firesim-f2/hdk/cl/developer_designs
 else
 $(error Invalid PLATFORM used: $(PLATFORM))
 endif
@@ -46,6 +46,10 @@ fpga_sim_delivery_files = $(fpga_driver_dir)/$(DESIGN)-$(PLATFORM)
 $(fpga_work_dir)/stamp: $(shell find $(board_dir)/cl_firesim -name '*')
 	mkdir -p $(@D)
 	cp -rf $(board_dir)/cl_firesim -T $(fpga_work_dir)
+ifeq ($(PLATFORM), f2)
+	# Create symlink for config-specific synth TCL (F2 build_all.tcl sources synth_$${CL}.tcl)
+	cd $(fpga_build_dir)/scripts && ln -sf synth_cl_firesim.tcl synth_cl_$(name_quintuplet).tcl
+endif
 	touch $@
 
 $(repo_state): $(simulator_verilog) $(fpga_work_dir)/stamp
@@ -54,13 +58,6 @@ $(repo_state): $(simulator_verilog) $(fpga_work_dir)/stamp
 $(fpga_delivery_dir)/$(BASE_FILE_NAME)%: $(simulator_verilog) $(fpga_work_dir)/stamp
 	cp -f $(GENERATED_DIR)/*.ipgen.tcl $(@D) || true
 	cp -f $(GENERATED_DIR)/$(@F) $@
-	# Copy any FIRRTL blackbox resource files (one-per-line list), if present
-	if [ -f $(GENERATED_DIR)/firrtl_black_box_resource_files.f ]; then \
-		while read -r bb_file; do \
-			cp -f "$$bb_file" "$(@D)" || true; \
-		done < $(GENERATED_DIR)/firrtl_black_box_resource_files.f; \
-	fi
-	cp -f $(GENERATED_DIR)/plusarg_reader.v $(@D) || true
 
 $(fpga_driver_dir)/$(BASE_FILE_NAME)%: $(simulator_verilog) $(fpga_work_dir)/stamp
 	mkdir -p $(@D)
