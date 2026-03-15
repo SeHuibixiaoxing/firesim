@@ -226,6 +226,32 @@ class F2BitBuilder(BitBuilder):
         # check to see email notifications can be subscribed
         get_snsname_arn()
 
+    def prepare_local_f2_platform(self, local_awsfpga_dir: str) -> None:
+        """Materialize nested submodules and LFS content before rsyncing to a build host."""
+        rootLogger.info("Preparing local AWS F2 platform collateral")
+
+        local(f"git -C {local_awsfpga_dir} submodule sync --recursive")
+        local(f"git -C {local_awsfpga_dir} submodule update --init --recursive")
+
+        with settings(warn_only=True):
+            git_lfs_result = local("git lfs version", capture=True)
+
+        if git_lfs_result.failed:
+            raise RuntimeError(
+                "git-lfs is required for FireSim F2 buildbitstream collateral. "
+                "Install git-lfs on the manager host before retrying."
+            )
+
+        lfs_repos = [
+            local_awsfpga_dir,
+            f"{local_awsfpga_dir}/hdk/common/ip",
+            f"{local_awsfpga_dir}/hdk/common/shell_stable/hlx",
+        ]
+
+        for repo in lfs_repos:
+            local(f"git -C {repo} lfs install --local")
+            local(f"git -C {repo} lfs pull")
+
     def cl_dir_setup(self, chisel_quintuplet: str, dest_build_dir: str) -> str:
         """Setup CL_DIR on build host.
 
@@ -240,6 +266,7 @@ class F2BitBuilder(BitBuilder):
 
         # local paths
         local_awsfpga_dir = f"{get_deploy_dir()}/../platforms/f2/aws-fpga-firesim-f2"
+        self.prepare_local_f2_platform(local_awsfpga_dir)
 
         dest_f2_platform_dir = f"{dest_build_dir}/platforms/f2/"
         dest_awsfpga_dir = f"{dest_f2_platform_dir}/aws-fpga-firesim-f2"

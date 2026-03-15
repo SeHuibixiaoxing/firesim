@@ -141,6 +141,8 @@ echo $'\033[0;32mrh:\033[0m Replacing paramiko-ng with paramiko to add rsa2 ssh 
 pip uninstall -y paramiko-ng paramiko fab-classic 2>/dev/null || true
 PARAMIKO_REPLACE=1 pip install --no-cache-dir --no-binary fab-classic 'fab-classic>=1.19.2' #rh: see https://pypi.org/project/fab-classic/
 pip install --force-reinstall "paramiko==2.9.0"
+# Keep ED25519 key support available after the paramiko package swap.
+pip install --force-reinstall "pynacl>=1.5.0"
 
 # init all submodules except for chipyard
 git config submodule.target-design/chipyard.update none

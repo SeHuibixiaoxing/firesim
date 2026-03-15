@@ -22,6 +22,56 @@ CL_DIR=""
 FREQUENCY=""
 STRATEGY=""
 
+ensure_shell_checkpoint() {
+    local shell_mode="small_shell"
+    local shell_version_file shell_version shell_root checkpoint_dir
+    local dcp_name dcp_path sha_path shell_url expected_sha actual_sha
+
+    shell_root="${HDK_SHELL_DIR}"
+    shell_version_file="${shell_root}/shell_version.txt"
+    shell_version=$(awk -F= -v mode="${shell_mode}" '$1 == mode { print $2 }' "${shell_version_file}")
+
+    if [ -z "${shell_version}" ]; then
+        echo "Unable to determine ${shell_mode} version from ${shell_version_file}" >&2
+        exit 1
+    fi
+
+    checkpoint_dir="${shell_root}/build/checkpoints/from_aws"
+    dcp_name="cl_bb_routed.${shell_mode}.dcp"
+    dcp_path="${checkpoint_dir}/${dcp_name}"
+    sha_path="${dcp_path}.sha256"
+    shell_url="https://aws-fpga-hdk-resources.s3.amazonaws.com/hdk/shell_v${shell_version#0x}"
+
+    mkdir -p "${checkpoint_dir}"
+
+    wget -q "${shell_url}/${dcp_name}.sha256" -O "${sha_path}.tmp"
+    expected_sha=$(awk '{print $1}' "${sha_path}.tmp")
+
+    if [ -f "${dcp_path}" ]; then
+        actual_sha=$(sha256sum "${dcp_path}" | awk '{print $1}')
+    else
+        actual_sha=""
+    fi
+
+    if [ "${actual_sha}" != "${expected_sha}" ]; then
+        echo "Refreshing ${dcp_name} from ${shell_url}" >&2
+        wget -q "${shell_url}/${dcp_name}" -O "${dcp_path}.tmp"
+        actual_sha=$(sha256sum "${dcp_path}.tmp" | awk '{print $1}')
+
+        if [ "${actual_sha}" != "${expected_sha}" ]; then
+            echo "SHA256 mismatch for ${dcp_name}" >&2
+            echo "Expected: ${expected_sha}" >&2
+            echo "Actual:   ${actual_sha}" >&2
+            rm -f "${dcp_path}.tmp" "${sha_path}.tmp"
+            exit 1
+        fi
+
+        mv "${dcp_path}.tmp" "${dcp_path}"
+    fi
+
+    mv "${sha_path}.tmp" "${sha_path}"
+}
+
 # getopts does not support long options, and is inflexible
 # ensure $1 arg is empty or else hdk_setup.sh will fail
 while [ "$1" != "" ];
@@ -62,9 +112,11 @@ fi
 
 AWS_FPGA_DIR=$CL_DIR/../../../..
 
-# setup hdk # rh: -s is a flag that skips some git initialization on device, unnecessary as files already present on manager 
+# setup hdk; keep -s so the remote build uses the rsynced manager snapshot instead of
+# mutating submodules on the build host, then self-heal the required shell checkpoint
 cd $AWS_FPGA_DIR
 source hdk_setup.sh -s
+ensure_shell_checkpoint
 
 export CL_DIR=$CL_DIR
 
