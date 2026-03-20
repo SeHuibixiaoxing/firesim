@@ -6,6 +6,7 @@ import sys
 import os
 import signal
 import argparse
+import errno
 from time import strftime, gmtime
 import logging
 import random
@@ -50,6 +51,54 @@ TASKS: Dict[str, Task] = {}
 
 class FiresimTaskAccessViolation(RuntimeError):
     pass
+
+
+class ResilientConsoleHandler(logging.StreamHandler):
+    """Drop console logging if the attached stdout stream disappears."""
+
+    _broken_stream_errnos = {errno.EPIPE, errno.EBADF, errno.ENOTCONN}
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._detached = False
+
+    def _detach_from_root_logger(self) -> None:
+        if self._detached:
+            return
+        self._detached = True
+
+        root_logger = logging.getLogger()
+        if self in root_logger.handlers:
+            root_logger.removeHandler(self)
+
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        _, exc_value, _ = sys.exc_info()
+        if isinstance(exc_value, BrokenPipeError):
+            self._detach_from_root_logger()
+            return
+        if (
+            isinstance(exc_value, OSError)
+            and exc_value.errno in self._broken_stream_errnos
+        ):
+            self._detach_from_root_logger()
+            return
+        super().handleError(record)
+
+
+def harden_long_running_task_signals(task_name: str) -> None:
+    """Keep long FireSim tasks alive if the invoking session hangs up."""
+
+    if not hasattr(signal, "SIGHUP"):
+        return
+
+    if task_name in {"buildbitstream", "infrasetup", "runworkload"}:
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+
 
 def register_task(task: Callable) -> Callable:
     """Decorator to Map `task.__name__` to `task` in `TASKS`
@@ -339,7 +388,7 @@ def tar2afi(build_config_file: BuildConfigFile) -> None:
 
     for build_config in build_config_file.builds_list:
         assert isinstance(build_config.bitbuilder, F2BitBuilder)
-        execute(build_config.bitbuilder.aws_create_afi, build_config_file, build_config, hosts=['localhost'])
+        execute(build_config.bitbuilder.aws_create_afi, hosts=["localhost"])
 
 
 @register_task
@@ -484,6 +533,7 @@ if __name__ == '__main__':
     # junk log files to be created. also lets us use args.task in the logfile
     # name
     args = construct_firesim_argparser().parse_args()
+    harden_long_running_task_signals(args.task)
 
     # logging setup
     def logfilename() -> str:
@@ -494,6 +544,8 @@ if __name__ == '__main__':
 
     # treat python warnings as WARNING level messages from py.warn
     logging.captureWarnings(True)
+    # Keep the file logger alive if the invoking terminal/stdout pipe disappears.
+    logging.raiseExceptions = False
 
     rootLogger = logging.getLogger()
     rootLogger.setLevel(logging.NOTSET) # capture everything
@@ -510,7 +562,7 @@ if __name__ == '__main__':
     rootLogger.addHandler(fileHandler)
 
     # log to stdout, without special formatting
-    consoleHandler = logging.StreamHandler(stream=sys.stdout)
+    consoleHandler = ResilientConsoleHandler(stream=sys.stdout)
     consoleHandler.setLevel(logging.INFO) # show only INFO and greater in console
     rootLogger.addHandler(consoleHandler)
 

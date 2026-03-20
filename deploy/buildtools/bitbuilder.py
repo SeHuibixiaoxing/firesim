@@ -14,7 +14,12 @@ from fabric.contrib.project import rsync_project  # type: ignore
 
 from util.streamlogger import InfoStreamLogger
 from util.export import create_export_string
-from awstools.afitools import firesim_tags_to_description, copy_afi_to_all_regions
+from awstools.afitools import (
+    AWS_FPGA_IMAGE_DESCRIPTION_MAX_LEN,
+    compact_firesim_description,
+    copy_afi_to_all_regions,
+    firesim_tag_tuples_to_description,
+)
 from awstools.awstools import (
     send_firesim_notification,
     get_aws_userid,
@@ -26,7 +31,7 @@ from awstools.awstools import (
 )
 
 # imports needed for python type checking
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import Optional, Dict, Any, TYPE_CHECKING, List, Tuple
 
 if TYPE_CHECKING:
     from buildtools.buildconfig import BuildConfig
@@ -136,8 +141,15 @@ class BitBuilder(metaclass=abc.ABCMeta):
         """
         raise NotImplementedError
 
-    def get_metadata_string(self) -> str:
-        """Standardized metadata format used across different FPGA platforms"""
+    def get_metadata_tags(self) -> List[Tuple[str, str]]:
+        """Construct FireSim metadata key/value pairs for AGFI descriptions and tar metadata."""
+        deploy_dir = os.path.realpath(get_deploy_dir())
+
+        def normalize_makefrag(makefrag: Optional[str]) -> Optional[str]:
+            if not makefrag:
+                return makefrag
+            return os.path.relpath(os.path.realpath(makefrag), start=deploy_dir)
+
         # construct the "tags" we store in the metadata description
         tag_build_quintuplet = self.build_config.get_chisel_quintuplet()
         tag_deploy_quintuplet = self.build_config.get_effective_deploy_quintuplet()
@@ -145,13 +157,13 @@ class BitBuilder(metaclass=abc.ABCMeta):
         tag_build_triplet = self.build_config.get_chisel_triplet()
         tag_deploy_triplet = self.build_config.get_effective_deploy_triplet()
 
-        tag_build_makefrag = self.build_config.get_deploy_makefrag()
-        tag_deploy_makefrag = self.build_config.get_deploy_makefrag()
+        tag_build_makefrag = normalize_makefrag(self.build_config.get_deploy_makefrag())
+        tag_deploy_makefrag = normalize_makefrag(
+            self.build_config.get_deploy_makefrag()
+        )
 
-        # the asserts are left over from when we tried to do this with tags
-        # - technically I don't know how long these descriptions are allowed to be,
-        # but it's at least 2048 chars, so I'll leave these here for now as sanity
-        # checks.
+        # These are per-field sanity checks. The final AWS description length is
+        # constrained separately because the serialized string has a much smaller limit.
         assert (
             len(tag_build_quintuplet) <= 255
         ), "ERR: does not support tags longer than 256 chars for build_quintuplet"
@@ -183,16 +195,60 @@ class BitBuilder(metaclass=abc.ABCMeta):
             len(tag_fsimcommit) <= 255
         ), "ERR: aws does not support tags longer than 256 chars for fsimcommit"
 
-        # construct the serialized description from these tags.
-        return firesim_tags_to_description(
-            tag_build_quintuplet,
-            tag_deploy_quintuplet,
-            tag_build_triplet,
-            tag_deploy_triplet,
-            tag_fsimcommit,
-            tag_build_makefrag,
-            tag_deploy_makefrag,
+        return [
+            ("firesim-buildquintuplet", tag_build_quintuplet),
+            ("firesim-deployquintuplet", tag_deploy_quintuplet),
+            ("firesim-buildtriplet", tag_build_triplet),
+            ("firesim-deploytriplet", tag_deploy_triplet),
+            ("firesim-commit", tag_fsimcommit),
+            ("firesim-buildmakefrag", tag_build_makefrag),
+            ("firesim-deploymakefrag", tag_deploy_makefrag),
+        ]
+
+    def get_metadata_string(self, max_len: Optional[int] = None) -> str:
+        """Serialize FireSim metadata, compacting optional fields when required."""
+        metadata_tags = self.get_metadata_tags()
+        if max_len is None:
+            return firesim_tag_tuples_to_description(metadata_tags)
+
+        tag_values = dict(metadata_tags)
+        dropped_duplicate_build_tags = [
+            build_key
+            for build_key, deploy_key in [
+                ("firesim-buildquintuplet", "firesim-deployquintuplet"),
+                ("firesim-buildtriplet", "firesim-deploytriplet"),
+                ("firesim-buildmakefrag", "firesim-deploymakefrag"),
+            ]
+            if tag_values.get(build_key) == tag_values.get(deploy_key)
+        ]
+        compact_tags = [
+            tag for tag in metadata_tags if tag[0] not in dropped_duplicate_build_tags
+        ]
+        description = firesim_tag_tuples_to_description(compact_tags)
+        if len(description) <= max_len:
+            if dropped_duplicate_build_tags:
+                rootLogger.info(
+                    "Compacted FireSim AGFI description to %d chars by omitting duplicate build metadata: %s",
+                    len(description),
+                    ", ".join(dropped_duplicate_build_tags),
+                )
+            return description
+
+        try:
+            description, dropped_optional_tags = compact_firesim_description(
+                compact_tags, max_len=max_len
+            )
+        except ValueError as exc:
+            raise RuntimeError(str(exc)) from exc
+
+        dropped_tags = dropped_duplicate_build_tags + dropped_optional_tags
+        rootLogger.warning(
+            "Compacted FireSim AGFI description to %d chars to satisfy the AWS %d-char limit. Omitted: %s",
+            len(description),
+            max_len,
+            ", ".join(dropped_tags),
         )
+        return description
 
 
 class F2BitBuilder(BitBuilder):
@@ -420,7 +476,9 @@ class F2BitBuilder(BitBuilder):
         s3bucket = self.s3_bucketname
         afiname = self.build_config.name
 
-        description = self.get_metadata_string()
+        description = self.get_metadata_string(
+            max_len=AWS_FPGA_IMAGE_DESCRIPTION_MAX_LEN
+        )
 
         # if we're unlucky, multiple vivado builds may launch at the same time. so we
         # append the build node IP + a random string to diff them in s3

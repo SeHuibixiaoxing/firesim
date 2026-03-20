@@ -6,7 +6,26 @@ import logging
 import boto3
 from awstools.awstools import depaginated_boto_query
 
+from typing import List, Sequence, Tuple
+
 rootLogger = logging.getLogger()
+
+AWS_FPGA_IMAGE_DESCRIPTION_MAX_LEN = 1000
+FIRESIM_DESCRIPTION_DROP_ORDER = (
+    "firesim-buildmakefrag",
+    "firesim-buildtriplet",
+    "firesim-buildquintuplet",
+    "firesim-deploymakefrag",
+    "firesim-deploytriplet",
+    "firesim-commit",
+)
+
+
+def firesim_tag_tuples_to_description(
+    tag_tuples: Sequence[Tuple[str, str]],
+) -> str:
+    """Serialize FireSim metadata key/value pairs into the AGFI description format."""
+    return ",".join(f"{key}:{value}" for key, value in tag_tuples if value is not None)
 
 
 def get_fpga_regions():
@@ -123,7 +142,44 @@ def firesim_tags_to_description(
 ):
     """Serialize the tags we want to set for storage in the AGFI description"""
     # note: the serialized rep still includes "triplets" for future manager versions to be compatible with old agfis
-    return f"""firesim-buildquintuplet:{build_quintuplet},firesim-deployquintuplet:{deploy_quintuplet},firesim-buildtriplet:{build_triplet},firesim-deploytriplet:{deploy_triplet},firesim-commit:{commit},firesim-buildmakefrag:{build_makefrag},firesim-deploymakefrag:{deploy_makefrag}"""
+    return firesim_tag_tuples_to_description(
+        [
+            ("firesim-buildquintuplet", build_quintuplet),
+            ("firesim-deployquintuplet", deploy_quintuplet),
+            ("firesim-buildtriplet", build_triplet),
+            ("firesim-deploytriplet", deploy_triplet),
+            ("firesim-commit", commit),
+            ("firesim-buildmakefrag", build_makefrag),
+            ("firesim-deploymakefrag", deploy_makefrag),
+        ]
+    )
+
+
+def compact_firesim_description(
+    tag_tuples: Sequence[Tuple[str, str]],
+    max_len: int = AWS_FPGA_IMAGE_DESCRIPTION_MAX_LEN,
+) -> Tuple[str, List[str]]:
+    """Drop optional FireSim metadata keys until the serialized description fits."""
+    compact_tags = list(tag_tuples)
+    description = firesim_tag_tuples_to_description(compact_tags)
+    if len(description) <= max_len:
+        return description, []
+
+    dropped_keys: List[str] = []
+    for key in FIRESIM_DESCRIPTION_DROP_ORDER:
+        next_tags = [tag for tag in compact_tags if tag[0] != key]
+        if len(next_tags) == len(compact_tags):
+            continue
+
+        compact_tags = next_tags
+        dropped_keys.append(key)
+        description = firesim_tag_tuples_to_description(compact_tags)
+        if len(description) <= max_len:
+            return description, dropped_keys
+
+    raise ValueError(
+        f"Unable to fit FireSim AGFI description within {max_len} characters."
+    )
 
 
 def firesim_description_to_tags(description):
@@ -133,7 +189,11 @@ def firesim_description_to_tags(description):
     returndict = dict()
     desc_split = description.split(",")
     for keypair in desc_split:
-        splitpair = keypair.split(":")
+        if not keypair:
+            continue
+        splitpair = keypair.split(":", 1)
+        if len(splitpair) != 2:
+            continue
         returndict[splitpair[0]] = splitpair[1]
     return returndict
 
