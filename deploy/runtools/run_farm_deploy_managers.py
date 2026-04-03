@@ -6,6 +6,7 @@ import re
 import logging
 import abc
 import json
+import time
 from fabric.api import prefix, local, run, env, cd, warn_only, put, settings, hide  # type: ignore
 from fabric.contrib.project import rsync_project  # type: ignore
 from os.path import join as pjoin
@@ -107,6 +108,10 @@ class InstanceDeployManager(metaclass=abc.ABCMeta):
 
         """
         raise NotImplementedError
+
+    def pre_start_sim_slot(self, slotno: int) -> None:
+        """Platform-specific hook before launching a simulation slot."""
+        return
 
     def instance_logger(self, logstr: str, debug: bool = False) -> None:
         """Log with this host's info as prefix."""
@@ -313,6 +318,7 @@ class InstanceDeployManager(metaclass=abc.ABCMeta):
             self.instance_logger(
                 f"""Starting {self.sim_type_message} simulation for slot: {slotno}."""
             )
+            self.pre_start_sim_slot(slotno)
             remote_home_dir = self.parent_node.sim_dir
             remote_sim_dir = f"""{remote_home_dir}/sim_slot_{slotno}/"""
             assert slotno < len(
@@ -681,6 +687,59 @@ class EC2InstanceDeployManager(InstanceDeployManager):
     def __init__(self, parent_node: Inst) -> None:
         super().__init__(parent_node)
         self.nbd_tracker = NBDTracker()
+        self._driver_readiness_timeout_seconds = 30
+        self._driver_readiness_retry_delay_seconds = 10
+        self._driver_readiness_attempts = 3
+
+    def _get_slot_driver_binaryname(self, slotno: int) -> str:
+        server = self.parent_node.sim_slots[slotno]
+        return server.get_resolved_server_hardware_config().get_local_driver_binaryname()
+
+    def verify_slot_driver_readiness(self, slotno: int) -> None:
+        """Check that the FireSim driver reaches the fingerprint preflight."""
+        if self.parent_node.metasimulation_enabled:
+            return
+
+        remote_sim_dir = self.get_remote_sim_dir_for_slot(slotno)
+        driver = self._get_slot_driver_binaryname(slotno)
+        check_cmd = (
+            "timeout --kill-after=5s "
+            f"{self._driver_readiness_timeout_seconds}s "
+            f"sudo ./{driver} +slotid={slotno} +check-fingerprint"
+        )
+
+        for attempt in range(1, self._driver_readiness_attempts + 1):
+            self.instance_logger(
+                f"Preflighting FireSim driver readiness for slot {slotno} "
+                f"(attempt {attempt}/{self._driver_readiness_attempts})."
+            )
+            with cd(remote_sim_dir):
+                with warn_only():
+                    run(f"sudo pkill -SIGKILL {driver[:15]}")
+                    run(f"sudo fpga-describe-local-image -S {slotno} -R -H")
+                    result = run(check_cmd)
+
+            if result.return_code == 0:
+                self.instance_logger(
+                    f"FireSim driver readiness preflight passed for slot {slotno}."
+                )
+                return
+
+            if attempt < self._driver_readiness_attempts:
+                self.instance_logger(
+                    f"FireSim driver readiness preflight failed for slot {slotno} "
+                    f"with return code {result.return_code}; retrying after "
+                    f"{self._driver_readiness_retry_delay_seconds}s."
+                )
+                time.sleep(self._driver_readiness_retry_delay_seconds)
+
+        raise RuntimeError(
+            "FireSim driver readiness preflight failed for "
+            f"slot {slotno} after {self._driver_readiness_attempts} attempts."
+        )
+
+    def pre_start_sim_slot(self, slotno: int) -> None:
+        self.verify_slot_driver_readiness(slotno)
 
     def get_and_install_aws_fpga_sdk(self) -> None:
         """Installs the aws-sdk. This gets us access to tools to flash the fpga."""
@@ -904,6 +963,9 @@ class EC2InstanceDeployManager(InstanceDeployManager):
                 # restart (or start form scratch) ila server
                 self.kill_ila_server()
                 self.start_ila_server()
+
+                for slotno in range(len(self.parent_node.sim_slots)):
+                    self.verify_slot_driver_readiness(slotno)
 
         if self.instance_assigned_switches():
             # all nodes could have a switch

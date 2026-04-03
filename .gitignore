@@ -22,3 +22,5 @@ tmp/
 deploy/workloads/*
 env.sh.backup
 platforms/xilinx_alveo_u200/cl_firesim/design/*
+.ivy2
+.sbt

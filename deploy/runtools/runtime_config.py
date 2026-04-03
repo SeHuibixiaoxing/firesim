@@ -626,10 +626,23 @@ class RuntimeHWConfig:
             )
             permissive_driver_args += command_pcisoffsets
 
+        uart0_mode = os.environ.get("FIRESIM_UART0_MODE", "stdio")
+        if uart0_mode == "file":
+            uart0_in = os.environ.get("FIRESIM_UART0_IN_PATH", "/dev/null")
+            uart0_out = os.environ.get("FIRESIM_UART0_OUT_PATH", "uartlog")
+            permissive_driver_args += [
+                f"+uart-in0={uart0_in}",
+                f"+uart-out0={uart0_out}",
+            ]
+
         driver_call = f"""{need_sudo} ./{driver} +permissive {" ".join(permissive_driver_args)} {extra_plusargs} +permissive-off {" ".join(command_bootbinaries)} {extra_args} """
-        base_command = (
-            f"""script -f -c 'stty intr ^] && {driver_call} && stty intr ^c' uartlog"""
-        )
+        if uart0_mode == "file":
+            driver_log = os.environ.get("FIRESIM_UART_DRIVER_LOG_PATH", "driverlog")
+            base_command = f"""{driver_call} > {driver_log} 2>&1"""
+        else:
+            base_command = (
+                f"""script -f -c 'stty intr ^] && {driver_call} && stty intr ^c' uartlog"""
+            )
         screen_wrapped = (
             f"""screen -S {screen_name} -d -m bash -c "{base_command}"; sleep 1"""
         )
