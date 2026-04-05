@@ -276,7 +276,18 @@ class F2BitBuilder(BitBuilder):
                 # in tutorial mode, special s3 bucket name
                 self.s3_bucketname = aws_resource_names_dict["s3bucketname"]
 
+    def local_only_mode(self) -> bool:
+        return os.environ.get("FIRESIM_F2_LOCAL_ONLY", "0") == "1"
+
     def setup(self) -> None:
+        if self.local_only_mode():
+            rootLogger.warning(
+                "FIRESIM_F2_LOCAL_ONLY=1 set; skipping F2 AWS setup. "
+                "Local replace-rtl/Vivado will run, but AFI creation must be "
+                "done later with `firesim tar2afi` once AWS credentials are available."
+            )
+            return
+
         auto_create_bucket(self.s3_bucketname)
 
         # check to see email notifications can be subscribed
@@ -448,6 +459,17 @@ class F2BitBuilder(BitBuilder):
         if vivado_rc != 0:
             on_build_failure()
             return False
+
+        if self.local_only_mode():
+            rootLogger.info(
+                "FIRESIM_F2_LOCAL_ONLY=1 set; skipping AFI creation. "
+                "Vivado artifacts remain under %s and can be converted later "
+                "with `firesim tar2afi --launchtime %s` once AWS credentials are available.",
+                local_results_dir,
+                self.build_config.launch_time,
+            )
+            build_farm.release_build_host(self.build_config)
+            return True
 
         if not self.aws_create_afi():
             on_build_failure()

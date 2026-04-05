@@ -4,6 +4,9 @@ import logging
 import abc
 import pprint
 import os
+import shlex
+import subprocess
+import time
 
 from awstools.awstools import (
     aws_resource_names,
@@ -284,6 +287,9 @@ class AWSEC2(BuildFarm):
     build_instance_market: str
     spot_interruption_behavior: str
     spot_max_price: str
+    build_host_swap_size_gb: int
+    build_host_swappiness: int
+    build_host_swapfile_path: str
 
     def __init__(self, args: Dict[str, Any]) -> None:
         """
@@ -318,10 +324,97 @@ class AWSEC2(BuildFarm):
         self.build_instance_market = self.args["build_instance_market"]
         self.spot_interruption_behavior = self.args["spot_interruption_behavior"]
         self.spot_max_price = self.args["spot_max_price"]
+        self.build_host_swap_size_gb = int(self.args.get("build_host_swap_size_gb", 0))
+        self.build_host_swappiness = int(self.args.get("build_host_swappiness", 10))
+        self.build_host_swapfile_path = self.args.get(
+            "build_host_swapfile_path", "/swapfile2"
+        )
+        if self.build_host_swap_size_gb < 0:
+            raise Exception("ERROR: build_host_swap_size_gb must be non-negative")
 
         self.dest_build_dir = self.args["default_build_dir"]
         if not self.dest_build_dir:
             raise Exception("ERROR: Invalid null build dir")
+
+    def _wait_for_build_host_ssh(
+        self, ip_address: str, timeout_seconds: int = 600
+    ) -> None:
+        """Wait for the build host SSH service to accept connections."""
+        ssh_cmd = [
+            "ssh",
+            "-i",
+            os.path.expanduser("~/firesim.pem"),
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "ConnectTimeout=10",
+            f"ubuntu@{ip_address}",
+            "true",
+        ]
+
+        deadline = time.time() + timeout_seconds
+        while time.time() < deadline:
+            result = subprocess.run(
+                ssh_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            if result.returncode == 0:
+                return
+            time.sleep(10)
+
+        raise Exception(f"Timed out waiting for SSH on build host {ip_address}")
+
+    def _configure_build_host_swap(self, ip_address: str) -> None:
+        """Provision additional swap on the build host if requested."""
+        if self.build_host_swap_size_gb == 0:
+            return
+
+        self._wait_for_build_host_ssh(ip_address)
+
+        swapfile = self.build_host_swapfile_path
+        fstab_entry = f"{swapfile} none swap sw 0 0"
+        swappiness_entry = f"vm.swappiness={self.build_host_swappiness}"
+
+        swap_setup_script = f"""
+set -euo pipefail
+if [ ! -f {shlex.quote(swapfile)} ]; then
+  sudo fallocate -l {self.build_host_swap_size_gb}G {shlex.quote(swapfile)}
+  sudo chmod 600 {shlex.quote(swapfile)}
+  sudo mkswap {shlex.quote(swapfile)}
+fi
+if ! sudo swapon --show=NAME | grep -Fqx -- {shlex.quote(swapfile)}; then
+  sudo swapon {shlex.quote(swapfile)}
+fi
+if ! grep -Fqx -- {shlex.quote(fstab_entry)} /etc/fstab; then
+  echo {shlex.quote(fstab_entry)} | sudo tee -a /etc/fstab >/dev/null
+fi
+sudo sysctl {shlex.quote(swappiness_entry)} >/dev/null
+sudo sed -i '/^vm\\.swappiness=/d' /etc/sysctl.conf
+echo {shlex.quote(swappiness_entry)} | sudo tee -a /etc/sysctl.conf >/dev/null
+"""
+
+        ssh_cmd = [
+            "ssh",
+            "-i",
+            os.path.expanduser("~/firesim.pem"),
+            "-o",
+            "StrictHostKeyChecking=no",
+            f"ubuntu@{ip_address}",
+            f"bash -lc {shlex.quote(swap_setup_script)}",
+        ]
+        result = subprocess.run(
+            ssh_cmd, capture_output=True, text=True, check=False
+        )
+        if result.returncode != 0:
+            raise Exception(
+                f"Failed to configure swap on build host {ip_address}: {result.stderr.strip()}"
+            )
+
+        rootLogger.info(
+            f"Configured build-host swap on {ip_address}: {self.build_host_swap_size_gb} GiB at {self.build_host_swapfile_path}"
+        )
 
     def request_build_host(self, build_config: BuildConfig) -> None:
         """Launch an AWS EC2 instance for the build config.
@@ -365,6 +458,7 @@ class AWSEC2(BuildFarm):
         build_host = cast(EC2BuildHost, self.get_build_host(build_config))
         wait_on_instance_launches([build_host.launched_instance_object])
         build_host.ip_address = build_host.launched_instance_object.private_ip_address
+        self._configure_build_host_swap(build_host.ip_address)
 
     def release_build_host(self, build_config: BuildConfig) -> None:
         """Terminate the EC2 instance running this build.
