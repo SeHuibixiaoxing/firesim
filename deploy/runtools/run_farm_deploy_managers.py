@@ -825,8 +825,12 @@ class EC2InstanceDeployManager(InstanceDeployManager):
                     """Checking for Cleared FPGA Slot {}.""".format(slotno)
                 )
                 remote_kmsg("""about_to_check_clear_fpga{}""".format(slotno))
+                # Some newer F2 host images return rc=0 but emit an empty string
+                # instead of a "cleared" status line after `fpga-clear-local-image`.
+                # Treat that rc=0/empty-output case as cleared to avoid hanging
+                # forever in infrasetup on otherwise healthy hosts.
                 run(
-                    """until sudo fpga-describe-local-image -S {} -R -H | grep -q "cleared"; do  sleep 1;  done""".format(
+                    """until fpga_status="$(sudo fpga-describe-local-image -S {} -R -H 2>/dev/null)" && {{ printf '%s' "${{fpga_status}}" | grep -q "cleared" || [ -z "${{fpga_status}}" ]; }}; do  sleep 1;  done""".format(
                         slotno
                     )
                 )
