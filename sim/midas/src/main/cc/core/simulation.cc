@@ -56,15 +56,24 @@ void simulation_t::print_simulation_performance_summary() {
   assert(start_hcycle.has_value() && end_hcycle.has_value() &&
          "simulation not executed");
 
-  const uint64_t hcycles = *end_hcycle - *start_hcycle;
+  const bool hcycle_underflow = *end_hcycle < *start_hcycle;
+  const uint64_t hcycles =
+      hcycle_underflow ? 0 : (*end_hcycle - *start_hcycle);
   const double sim_time = diff_secs(end_time, start_time);
   const double sim_speed = ((double)end_tcycle) / (sim_time * 1000.0);
   const double measured_host_frequency =
       ((double)hcycles) / (sim_time * 1000.0);
-  const double fmr = ((double)hcycles / end_tcycle);
+  const double fmr = end_tcycle == 0 ? 0.0 : ((double)hcycles / end_tcycle);
 
   fprintf(stderr, "\nEmulation Performance Summary\n");
   fprintf(stderr, "------------------------------\n");
+  if (hcycle_underflow) {
+    fprintf(stderr,
+            "Warning: host cycle counter moved backwards or was reset "
+            "(start=%" PRIu64 ", end=%" PRIu64 "). Reporting 0 host cycles.\n",
+            *start_hcycle,
+            *end_hcycle);
+  }
   fprintf(stderr, "Wallclock Time Elapsed: %.1f s\n", sim_time);
   // Provide enough sig-figs to let the report be useful in RTL sim
   fprintf(stderr, "Host Frequency: ");

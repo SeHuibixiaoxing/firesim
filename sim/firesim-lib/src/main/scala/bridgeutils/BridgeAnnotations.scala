@@ -22,8 +22,9 @@ case class PipeBridgeChannel(
   latency: Int,
 ) extends BridgeChannel {
   def update(renames: RenameMap): BridgeChannel = {
-    val renamer = RTRenamer.exact(renames)
-    PipeBridgeChannel(name, renamer(clock), sinks.map(renamer), sources.map(renamer), latency)
+    val exactRenamer = RTRenamer.exact(renames)
+    val renamer      = RTRenamer(renames)
+    PipeBridgeChannel(name, exactRenamer(clock), sinks.flatMap(renamer), sources.flatMap(renamer), latency)
   }
 }
 

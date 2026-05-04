@@ -488,14 +488,37 @@ object HostPortIOConnectChannels2Port {
 }
 
 object ChannelizedHostPortIOConnectChannels2Port {
+  private def leafBits(data: Data): Seq[Bits] = data match {
+    case _: Clock  => Seq()
+    case r: Record => r.elements.toSeq.flatMap { case (_, e) => leafBits(e) }
+    case v: Vec[_] => v.flatMap(leafBits)
+    case b: Bits   => Seq(b)
+  }
+
+  private def connectLeafBits(sink: Data, source: Data): Unit = {
+    val sinkLeaves   = leafBits(sink)
+    val sourceLeaves = leafBits(source)
+    require(
+      sinkLeaves.size == sourceLeaves.size,
+      s"ChannelizedHostPort payload leaf mismatch: sink=${sinkLeaves.size} source=${sourceLeaves.size}",
+    )
+    sinkLeaves.zip(sourceLeaves).foreach { case (sinkLeaf, sourceLeaf) => sinkLeaf := sourceLeaf }
+  }
+
   def apply(hp: ChannelizedHostPortIO, bridgeAnno: BridgeIOAnnotation, targetIO: TargetChannelIO): Unit = {
     val local2globalName = bridgeAnno.channelMapping.toMap
     for ((_, channel, metadata) <- hp.channels) {
       val localName = hp.reverseElementMap(channel)
       if (metadata.bridgeSunk) {
-        channel <> targetIO.wireOutputPortMap(local2globalName(localName))
+        val targetPort = targetIO.wireOutputPortMap(local2globalName(localName))
+        channel.valid := targetPort.valid
+        connectLeafBits(channel.bits, targetPort.bits)
+        targetPort.ready := channel.ready
       } else {
-        targetIO.wireInputPortMap(local2globalName(localName)) <> channel
+        val targetPort = targetIO.wireInputPortMap(local2globalName(localName))
+        targetPort.valid := channel.valid
+        connectLeafBits(targetPort.bits, channel.bits)
+        channel.ready := targetPort.ready
       }
     }
   }

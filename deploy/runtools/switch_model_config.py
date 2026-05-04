@@ -122,10 +122,11 @@ class AbstractSwitchToSwitchConfig:
 
         retstr = """
     #ifdef MACPORTSCONFIG
+    #define MAC2PORT_SIZE {}
     uint16_t mac2port[{}]  {}
     #endif
     """.format(
-            len(mac2port_pythonarray), commaseparated
+            len(mac2port_pythonarray), len(mac2port_pythonarray), commaseparated
         )
         return retstr
 
@@ -135,11 +136,24 @@ class AbstractSwitchToSwitchConfig:
         """
         return retstr
 
+    def has_root_ssh_port(self) -> bool:
+        """Root switches need a host TAP port for host<->target traffic.
+
+        The switching table maps MACs not reachable below this switch to the
+        first uplink port. A root switch has no real uplink, so instantiate an
+        SSHPort at that logical port number. Without this port, single-node
+        networked topologies can boot their target NIC but the host OS has no
+        path to the simulated network.
+        """
+
+        return len(self.fsimswitchnode.uplinks) == 0
+
     def get_numclientsconfig(self) -> str:
         """Emit constants for num ports."""
         numdownlinks = len(self.fsimswitchnode.downlinks)
+        sshports = 1 if self.has_root_ssh_port() else 0
         numuplinks = len(self.fsimswitchnode.uplinks)
-        totalports = numdownlinks + numuplinks
+        totalports = numdownlinks + numuplinks + sshports
 
         retstr = """
     #ifdef NUMCLIENTSCONFIG
@@ -147,7 +161,7 @@ class AbstractSwitchToSwitchConfig:
     #define NUMDOWNLINKS {}
     #define NUMUPLINKS {}
     #endif""".format(
-            totalports, numdownlinks, numuplinks
+            totalports, numdownlinks, numuplinks + sshports
         )
         return retstr
 
@@ -160,6 +174,16 @@ class AbstractSwitchToSwitchConfig:
                 + str(downlinkno)
                 + "] = "
                 + self.emit_init_for_downlink(downlinkno)
+            )
+
+        if self.has_root_ssh_port():
+            sshportno = len(self.fsimswitchnode.downlinks)
+            initstring += (
+                "ports["
+                + str(sshportno)
+                + "] = new SSHPort("
+                + str(sshportno)
+                + ");\n"
             )
 
         for uplinkno in range(len(self.fsimswitchnode.uplinks)):
@@ -222,9 +246,24 @@ class AbstractSwitchToSwitchConfig:
         switchlatency = self.fsimswitchnode.switch_switching_latency
         linklatency = self.fsimswitchnode.switch_link_latency
         bandwidth = self.fsimswitchnode.switch_bandwidth
+        need_sudo = "sudo" if is_on_aws() else ""
+        tap_setup = ""
+        if self.has_root_ssh_port():
+            tap_setup = (
+                "sudo pkill -x hw_server || true; "
+                "sudo ip tuntap add mode tap dev tap0 user $USER || true; "
+                "sudo ip link set dev tap0 down || true; "
+                "sudo ip link set dev tap0 address 8e:6b:35:04:00:00; "
+                "sudo ip addr flush dev tap0 || true; "
+                "sudo ip addr add 172.16.0.1/16 dev tap0; "
+                "sudo ip link set dev tap0 up; "
+                "sudo sysctl -w net.ipv6.conf.tap0.disable_ipv6=1; "
+            )
         # insert gdb -ex run --args in front of ./ below to start switches in gdb
-        return """screen -S {} -d -m bash -c "script -f -c './{} {} {} {}' switchlog"; sleep 1""".format(
+        return """screen -S {} -d -m bash -c "{}script -f -c '{} ./{} {} {} {}' switchlog"; sleep 1""".format(
             self.switch_binary_name(),
+            tap_setup,
+            need_sudo,
             self.switch_binary_name(),
             linklatency,
             switchlatency,

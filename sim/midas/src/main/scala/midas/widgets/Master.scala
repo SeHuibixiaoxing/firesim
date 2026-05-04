@@ -21,7 +21,10 @@ class SimulationMaster(implicit p: Parameters) extends Widget()(p) {
     val rFingerprint = RegInit(fingerprint.U(32.W))
     genROReg(rFingerprint, "PRESENCE_READ")
 
-    val wFingerprint = genWORegInit(Wire(UInt(32.W)), "PRESENCE_WRITE", fingerprint.U(32.W))
+    // The host driver reads this as a write shadow while checking the
+    // fingerprint. Keep it read/write; reading a WriteOnly MCR has undefined
+    // data on FPGA.
+    val wFingerprint = genAndAttachReg(Wire(UInt(32.W)), "PRESENCE_WRITE", Some(fingerprint.U(32.W)))
     when(wFingerprint =/= rFingerprint) {
       rFingerprint := wFingerprint
     }

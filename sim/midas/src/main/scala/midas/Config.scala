@@ -141,7 +141,11 @@ class F2Config
         Some(
           CPUManagedAXI4Params(
             addrBits = 64,
-            dataBits = 512,
+            // F2 BAR4 host accesses are issued as 64-bit pokes/peeks by
+            // simif_f2.cc. Keep the CPU-managed AXI beat width at 64 bits and
+            // let CPUManagedStreamEngine's StreamWidthAdapter pack/unpack the
+            // 512-bit bridge stream tokens.
+            dataBits = 64,
             idBits   = 6,
           )
         )

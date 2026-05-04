@@ -9,6 +9,14 @@ import json
 import time
 from fabric.api import prefix, local, run, env, cd, warn_only, put, settings, hide  # type: ignore
 from fabric.contrib.project import rsync_project  # type: ignore
+try:
+    from fabric.exceptions import NetworkError  # type: ignore
+except Exception:  # pragma: no cover - depends on Fabric version.
+    NetworkError = None  # type: ignore
+try:
+    from paramiko.ssh_exception import SSHException  # type: ignore
+except Exception:  # pragma: no cover - depends on Paramiko availability.
+    SSHException = None  # type: ignore
 from os.path import join as pjoin
 import os
 from pathlib import Path
@@ -25,6 +33,29 @@ if TYPE_CHECKING:
     from awstools.awstools import MockBoto3Instance
 
 rootLogger = logging.getLogger()
+
+
+def _is_transient_ssh_poll_error(exc: Exception) -> bool:
+    """Return true for SSH failures that should not complete/fail jobs."""
+    if NetworkError is not None and isinstance(exc, NetworkError):
+        return True
+    if isinstance(exc, (EOFError, OSError)):
+        return True
+    if SSHException is not None and isinstance(exc, SSHException):
+        msg = str(exc).lower()
+        return any(
+            token in msg
+            for token in (
+                "banner",
+                "connection reset",
+                "connection closed",
+                "eof",
+                "timed out",
+                "timeout",
+                "not open",
+            )
+        )
+    return False
 
 
 class NBDTracker:
@@ -119,6 +150,10 @@ class InstanceDeployManager(metaclass=abc.ABCMeta):
             rootLogger.debug("""[{}] """.format(env.host_string) + logstr)
         else:
             rootLogger.info("""[{}] """.format(env.host_string) + logstr)
+
+    def instance_warning(self, logstr: str) -> None:
+        """Warn with this host's info as prefix."""
+        rootLogger.warning("""[{}] """.format(env.host_string) + logstr)
 
     def sim_node_qcow(self) -> None:
         """If NBD is available and qcow2 support is required, install qemu-img
@@ -234,9 +269,33 @@ class InstanceDeployManager(metaclass=abc.ABCMeta):
 
             remote_sim_dir = self.get_remote_sim_dir_for_slot(slotno)
             options = "-xf"
+            driver_tar = hwcfg.get_driver_tar_filename()
 
             with cd(remote_sim_dir):
-                run(f"tar {options} {hwcfg.get_driver_tar_filename()}")
+                if self.parent_node.metasimulation_enabled:
+                    expected_driver = hwcfg.get_local_driver_binaryname()
+                    with settings(warn_only=True), hide("running", "stdout"):
+                        tar_listing = run(f"tar -tf {driver_tar}")
+                    if tar_listing.failed:
+                        raise Exception(
+                            f"Failed to inspect external driver tar '{driver_tar}' for metasim slot {slotno}."
+                        )
+                    tar_members = {
+                        Path(member).name
+                        for member in str(tar_listing).splitlines()
+                        if member
+                    }
+                    if expected_driver not in tar_members:
+                        raise Exception(
+                            "External driver tar '{}' for metasim slot {} does not contain the expected "
+                            "metasim driver '{}'. This usually means the tarball came from an FPGA driver "
+                            "bundle (for example one that only contains 'FireSim-f2') instead of a "
+                            "metasim build artifact.".format(
+                                driver_tar, slotno, expected_driver
+                            )
+                        )
+                    run("rm -f VFireSim VFireSim-debug simv simv-debug")
+                run(f"tar {options} {driver_tar}")
 
     def copy_switch_slot_infrastructure(self, switchslot: int) -> None:
         """copy all the switch infrastructure to the remote node."""
@@ -486,6 +545,38 @@ class InstanceDeployManager(metaclass=abc.ABCMeta):
                         pipes.append(line_stripped)
         return {"switches": switches, "simdrivers": simdrivers, "pipes": pipes}
 
+    def assigned_simulations_as_running(self) -> Dict[str, List[str]]:
+        """Return a conservative running set when the poll status is unknown."""
+        switches: List[str] = []
+        simdrivers: List[str] = []
+        pipes: List[str] = []
+        if self.instance_assigned_switches():
+            switches = [
+                slot.switch_builder.switch_binary_name()
+                for slot in self.parent_node.switch_slots
+            ]
+        if self.instance_assigned_simulations():
+            simdrivers = [str(slotno) for slotno in range(len(self.parent_node.sim_slots))]
+        if self.instance_assigned_pipes():
+            pipes = [
+                slot.pipe_builder.pipe_binary_name()
+                for slot in self.parent_node.pipe_slots
+            ]
+        return {"switches": switches, "simdrivers": simdrivers, "pipes": pipes}
+
+    def running_simulations_or_assume_running(self) -> Dict[str, List[str]]:
+        """Poll screen state, preserving jobs as running on transient SSH errors."""
+        try:
+            return self.running_simulations()
+        except Exception as exc:
+            if not _is_transient_ssh_poll_error(exc):
+                raise
+            self.instance_warning(
+                "Transient SSH failure while polling screens; "
+                f"preserving assigned jobs as running for this monitor loop: {exc}"
+            )
+            return self.assigned_simulations_as_running()
+
     def monitor_jobs_instance(
         self,
         prior_completed_jobs: List[str],
@@ -534,8 +625,9 @@ class InstanceDeployManager(metaclass=abc.ABCMeta):
                 return {"switches": {}, "sims": {}, "pipes": {}}
             else:
                 # get the status of the switch sims
+                instance_screen_status = self.running_simulations_or_assume_running()
                 switchescompleteddict = {
-                    k: False for k in self.running_simulations()["switches"]
+                    k: False for k in instance_screen_status["switches"]
                 }
                 for switchsim in self.parent_node.switch_slots:
                     swname = switchsim.switch_builder.switch_binary_name()
@@ -543,7 +635,7 @@ class InstanceDeployManager(metaclass=abc.ABCMeta):
                         switchescompleteddict[swname] = True
 
                 pipescompleteddict = {
-                    k: False for k in self.running_simulations()["pipes"]
+                    k: False for k in instance_screen_status["pipes"]
                 }
                 for pipesim in self.parent_node.pipe_slots:
                     pipename = pipesim.pipe_builder.pipe_binary_name()
@@ -583,7 +675,7 @@ class InstanceDeployManager(metaclass=abc.ABCMeta):
                 return {"sims": jobnames_to_completed, "switches": {}, "pipes": {}}
 
             # at this point, all jobs are NOT completed. so, see how they're doing now:
-            instance_screen_status = self.running_simulations()
+            instance_screen_status = self.running_simulations_or_assume_running()
 
             switchescompleteddict = {
                 k: False for k in instance_screen_status["switches"]
@@ -695,6 +787,33 @@ class EC2InstanceDeployManager(InstanceDeployManager):
         server = self.parent_node.sim_slots[slotno]
         return server.get_resolved_server_hardware_config().get_local_driver_binaryname()
 
+    def _get_slot_driver_readiness_plusargs(self, slotno: int) -> str:
+        """Return the minimal runtime plusargs needed for driver preflight.
+
+        Some bridges, notably SimpleNIC, require their runtime parameters to be
+        present even for `+check-fingerprint`. Reuse the same per-slot defaults
+        as the real sim launch path so readiness checks do not abort before they
+        ever reach the fingerprint handshake.
+        """
+
+        server = self.parent_node.sim_slots[slotno]
+
+        shmemportname = "default"
+        if server.uplinks:
+            shmemportname = server.uplinks[0].get_global_link_id()
+
+        plusargs = [
+            f"+macaddr0={server.get_mac_address()}",
+            f"+netbw0={server.server_bw_max}",
+            f"+linklatency0={server.server_link_latency}",
+            f"+shmemportname0={shmemportname}",
+        ]
+
+        if server.plusarg_passthrough:
+            plusargs.append(server.plusarg_passthrough)
+
+        return " ".join(plusargs)
+
     def verify_slot_driver_readiness(self, slotno: int) -> None:
         """Check that the FireSim driver reaches the fingerprint preflight."""
         if self.parent_node.metasimulation_enabled:
@@ -702,10 +821,11 @@ class EC2InstanceDeployManager(InstanceDeployManager):
 
         remote_sim_dir = self.get_remote_sim_dir_for_slot(slotno)
         driver = self._get_slot_driver_binaryname(slotno)
+        readiness_plusargs = self._get_slot_driver_readiness_plusargs(slotno)
         check_cmd = (
             "timeout --kill-after=5s "
             f"{self._driver_readiness_timeout_seconds}s "
-            f"sudo ./{driver} +slotid={slotno} +check-fingerprint"
+            f"sudo ./{driver} +slotid={slotno} {readiness_plusargs} +check-fingerprint"
         )
 
         for attempt in range(1, self._driver_readiness_attempts + 1):

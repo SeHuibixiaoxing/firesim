@@ -106,6 +106,7 @@ public:
   }
 
   // Accessors to avoid directly operating on params
+  const std::string &stream_name() const { return params.stream_name; };
   uint32_t fpga_buffer_size() { return params.fpga_buffer_size; };
   uint64_t dma_addr() { return params.dma_addr; };
   uint64_t count_addr() { return params.count_addr; };

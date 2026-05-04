@@ -179,7 +179,7 @@ void do_fast_switching() {
     switchpacket *tsp = pqueue.top().switchpack;
     pqueue.pop();
     uint16_t send_to_port =
-        get_port_from_flit(tsp->dat[0], 0 /* junk remove arg */);
+        get_port_from_flit(tsp->dat[0], tsp->sender);
     // printf("packet for port: %x\n", send_to_port);
     // printf("packet timestamp: %ld\n", tsp->timestamp);
     if (send_to_port == BROADCAST_ADJUSTED) {

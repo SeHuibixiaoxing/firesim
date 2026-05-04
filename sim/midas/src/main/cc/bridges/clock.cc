@@ -13,16 +13,23 @@ clockmodule_t::clockmodule_t(simif_t &simif,
   assert(index == 0 && "only one clock bridge is allowed");
 }
 
+uint64_t clockmodule_t::read_u64(uint64_t lo_addr,
+                                 uint64_t hi_addr,
+                                 uint64_t latch_addr) {
+  simif.write(latch_addr, 1);
+  uint32_t value_l = simif.read(lo_addr);
+  uint32_t value_h = simif.read(hi_addr);
+  return (((uint64_t)value_h) << 32) | value_l;
+}
+
 uint64_t clockmodule_t::tcycle() {
-  simif.write(mmio_addrs.tCycle_latch, 1);
-  uint32_t cycle_l = simif.read(mmio_addrs.tCycle_0);
-  uint32_t cycle_h = simif.read(mmio_addrs.tCycle_1);
-  return (((uint64_t)cycle_h) << 32) | cycle_l;
+  return read_u64(mmio_addrs.tCycle_0,
+                  mmio_addrs.tCycle_1,
+                  mmio_addrs.tCycle_latch);
 }
 
 uint64_t clockmodule_t::hcycle() {
-  simif.write(mmio_addrs.hCycle_latch, 1);
-  uint32_t cycle_l = simif.read(mmio_addrs.hCycle_0);
-  uint32_t cycle_h = simif.read(mmio_addrs.hCycle_1);
-  return (((uint64_t)cycle_h) << 32) | cycle_l;
+  return read_u64(mmio_addrs.hCycle_0,
+                  mmio_addrs.hCycle_1,
+                  mmio_addrs.hCycle_latch);
 }

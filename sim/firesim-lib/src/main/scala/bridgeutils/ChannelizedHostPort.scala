@@ -13,7 +13,7 @@ import chisel3.reflect.DataMirror
   * channel types.
   */
 case class PipeChannelMetadata(field: Data, clock: Clock, bridgeSunk: Boolean, latency: Int = 0) {
-  def fieldRTs = Seq(field.toTarget)
+  def fieldRTs = SimUtils.lowerAggregateIntoLeafTargets(field)
   def clockRT  = clock.toTarget
 }
 

@@ -574,14 +574,18 @@ class RuntimeHWConfig:
         permissive_driver_args += command_rootfses
         permissive_driver_args += command_niclogs
         permissive_driver_args += command_blkdev_logs
-        permissive_driver_args += [
-            f"{tracefile}",
-            f"+trace-select={tracerv_config.select}",
-            f"+trace-start={tracerv_config.start}",
-            f"+trace-end={tracerv_config.end}",
-            f"+trace-output-format={tracerv_config.output_format}",
-            dwarf_file_name,
-        ]
+        permissive_driver_args += (
+            [
+                f"{tracefile}",
+                f"+trace-select={tracerv_config.select}",
+                f"+trace-start={tracerv_config.start}",
+                f"+trace-end={tracerv_config.end}",
+                f"+trace-output-format={tracerv_config.output_format}",
+            ]
+            if tracerv_config.enable
+            else []
+        )
+        permissive_driver_args += [dwarf_file_name]
         permissive_driver_args += [
             f"+autocounter-readrate={autocounter_config.readrate}",
             autocounterfile,
@@ -878,10 +882,14 @@ class RuntimeBuildRecipeConfig(RuntimeHWConfig):
 
         self.agfi = None
         self.bitstream_tar = None
-        self.driver_tar = None
+        self.driver_tar = build_recipe_dict.get("driver_tar")
         self.tarball_built = False
 
         self.uri_list = []
+        if self.driver_tar is not None:
+            self.uri_list.append(
+                URIContainer("driver_tar", self.get_driver_tar_filename())
+            )
 
         self.deploy_quintuplet = (
             build_recipe_dict.get("PLATFORM", "f2")

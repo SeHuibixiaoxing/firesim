@@ -53,6 +53,8 @@ public:
 protected:
   int _portNo;
   bool _throttle;
+  uint64_t debug_push_packets = 0;
+  uint64_t debug_short_packets = 0;
 };
 
 BasePort::BasePort(int portNo, bool throttle)
@@ -63,8 +65,48 @@ int BasePort::push_input(switchpacket *sp) {
 
   // Packets smaller than three flits are too small to be valid
   if (sp->amtwritten < 3) {
-    printf("Warning: dropped packet with only %d flits\n", sp->amtwritten);
+    debug_short_packets++;
+    if (debug_short_packets <= 64 || ((debug_short_packets & (debug_short_packets - 1)) == 0)) {
+      fprintf(stderr,
+              "SWITCH DEBUG BasePort short_input_packet port=%d event=%llu "
+              "flits=%d sender=%d dat0=0x%016llx dat1=0x%016llx "
+              "dat2=0x%016llx\n",
+              _portNo,
+              (unsigned long long)debug_short_packets,
+              sp->amtwritten,
+              sp->sender,
+              (unsigned long long)sp->dat[0],
+              (unsigned long long)sp->dat[1],
+              (unsigned long long)sp->dat[2]);
+      fflush(stderr);
+    }
     return 0;
+  }
+
+  debug_push_packets++;
+  if (debug_push_packets <= 128) {
+    fprintf(stderr,
+            "SWITCH DEBUG BasePort input_packet port=%d event=%llu flits=%d "
+            "sender=%d dat0=0x%016llx dat1=0x%016llx dat2=0x%016llx\n",
+            _portNo,
+            (unsigned long long)debug_push_packets,
+            sp->amtwritten,
+            sp->sender,
+            (unsigned long long)sp->dat[0],
+            (unsigned long long)sp->dat[1],
+            (unsigned long long)sp->dat[2]);
+    fflush(stderr);
+    const int debug_flits = sp->amtwritten < 16 ? sp->amtwritten : 16;
+    for (int debug_idx = 0; debug_idx < debug_flits; debug_idx++) {
+      fprintf(stderr,
+              "SWITCH DEBUG BasePort input_packet_flit port=%d event=%llu "
+              "idx=%d data=0x%016llx\n",
+              _portNo,
+              (unsigned long long)debug_push_packets,
+              debug_idx,
+              (unsigned long long)sp->dat[debug_idx]);
+    }
+    fflush(stderr);
   }
 
   ethtype = ntohs((sp->dat[1] >> 48) & 0xffff);

@@ -297,8 +297,6 @@ class SimWrapper(val config: SimWrapperConfig)(implicit val p: Parameters) exten
   ): Iterable[PipeChannel[Data]] = {
     // Generate a channel queue for each annotation, leaving enq disconnected
     val queues = for (chAnno <- chAnnos) yield {
-      require(chAnno.sources == None || chAnno.sources.get.size == 1, "Can't aggregate wire-type channels yet")
-      require(chAnno.sinks == None || chAnno.sinks.get.size == 1, "Can't aggregate wire-type channels yet")
       val latency = chAnno.channelInfo.asInstanceOf[fame.PipeChannel].latency
       val channel = Module(new PipeChannel(getPipeChannelType(chAnno), latency))
       channel.suggestName(s"PipeChannel_${chAnno.globalName}")

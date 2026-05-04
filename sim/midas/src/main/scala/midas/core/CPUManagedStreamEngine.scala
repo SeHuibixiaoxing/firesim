@@ -47,6 +47,8 @@ class StreamWidthAdapter(narrowW: Int, wideW: Int) extends Module {
 
     val wide_beats     = RegInit(0.U(log2Ceil(beats).W))
     val wide_last_beat = wide_beats === (beats - 1).U
+    val wide_data      = Reg(Vec(beats, UInt(narrowW.W)))
+    val wide_valid     = RegInit(false.B)
 
     io.narrow.in.ready := Mux(narrow_last_beat, io.wide.out.ready, true.B)
     when(io.narrow.in.fire()) {
@@ -56,12 +58,22 @@ class StreamWidthAdapter(narrowW: Int, wideW: Int) extends Module {
     io.wide.out.valid  := narrow_last_beat && io.narrow.in.valid
     io.wide.out.bits   := Cat(io.narrow.in.bits, narrow_data.asUInt)
 
-    io.narrow.out.valid := io.wide.in.valid
-    io.narrow.out.bits  := io.wide.in.bits.asTypeOf(Vec(beats, UInt(narrowW.W)))(wide_beats)
-    when(io.narrow.out.fire()) {
-      wide_beats := Mux(wide_last_beat, 0.U, wide_beats + 1.U)
+    io.narrow.out.valid := wide_valid
+    io.narrow.out.bits  := wide_data(wide_beats)
+    io.wide.in.ready    := !wide_valid
+    when(io.wide.in.fire()) {
+      wide_data  := io.wide.in.bits.asTypeOf(Vec(beats, UInt(narrowW.W)))
+      wide_valid := true.B
+      wide_beats := 0.U
     }
-    io.wide.in.ready    := wide_last_beat && io.narrow.out.ready
+    when(io.narrow.out.fire()) {
+      when(wide_last_beat) {
+        wide_valid := false.B
+        wide_beats := 0.U
+      }.otherwise {
+        wide_beats := wide_beats + 1.U
+      }
+    }
   }
 }
 
@@ -86,6 +98,7 @@ class CPUManagedStreamEngine(p: Parameters, val params: StreamEngineParameters) 
 
   val axiBeatBytes     = cpuManagedAXI4params.dataBits / 8
   val bufferWidthBytes = BridgeStreamConstants.streamWidthBits / 8
+  val maxTransferBytes = math.min(4096, axiBeatBytes * 256)
 
   val cpuManagedAXI4NodeOpt = Some(
     AXI4SlaveNode(
@@ -97,8 +110,8 @@ class CPUManagedStreamEngine(p: Parameters, val params: StreamEngineParameters) 
               resources     = (new MemoryDevice).reg,
               regionType    = RegionType.UNCACHED, // cacheable
               executable    = false,
-              supportsWrite = TransferSizes(axiBeatBytes, 4096),
-              supportsRead  = TransferSizes(axiBeatBytes, 4096),
+              supportsWrite = TransferSizes(axiBeatBytes, maxTransferBytes),
+              supportsRead  = TransferSizes(axiBeatBytes, maxTransferBytes),
               interleavedId = Some(0),
             )
           ), // slave does not interleave read responses
@@ -227,9 +240,14 @@ class CPUManagedStreamEngine(p: Parameters, val params: StreamEngineParameters) 
 
       outgoingQueueIO.enq <> channel
 
+      // Do not prefetch a queue entry into the width adapter before the CPU
+      // has an outstanding AXI read. The host-side stream driver polls the
+      // queue count MMIO before issuing reads; hiding a token in this adapter
+      // would make the count look empty and can deadlock the stream.
+      val readRequestActive = grant && axi4.ar.valid
       ser_des.io.wide.in.bits   := outgoingQueueIO.deq.bits
-      ser_des.io.wide.in.valid  := outgoingQueueIO.deq.valid
-      outgoingQueueIO.deq.ready := ser_des.io.wide.in.ready
+      ser_des.io.wide.in.valid  := outgoingQueueIO.deq.valid && readRequestActive
+      outgoingQueueIO.deq.ready := ser_des.io.wide.in.ready && readRequestActive
 
       // check to see if axi4 has valid output instead of waiting for timeouts
       val countAddr  =

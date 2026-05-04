@@ -15,6 +15,8 @@ private:
   uint8_t *recvbufs[2];
   uint8_t *sendbufs[2];
   int currentround = 0;
+  uint64_t debug_recv_events = 0;
+  uint64_t debug_send_events = 0;
 };
 
 ShmemPort::ShmemPort(int portNo, char *shmemportname, bool uplink)
@@ -161,10 +163,63 @@ ShmemPort::ShmemPort(int portNo, char *shmemportname, bool uplink)
 }
 
 void ShmemPort::send() {
-  if (((uint64_t *)current_output_buf)[0] == 0xDEADBEEFDEADBEEFL) {
-    // if compress flag is set, clear it, this port type doesn't care
-    // (and in fact, we're writing too much, so stuff later will get confused)
-    ((uint64_t *)current_output_buf)[0] = 0L;
+  // Preserve the empty-round marker in shared memory. The SimpleNIC endpoint
+  // uses it to avoid scanning/copying a full empty network batch.
+  int valid_flits = 0;
+  int last_flits = 0;
+  int sample_count = 0;
+  uint64_t sample_data[16] = {0};
+  int sample_last[16] = {0};
+  int sample_token[16] = {0};
+  for (int tokenno = 0; tokenno < NUM_TOKENS; tokenno++) {
+    if (is_valid_flit(current_output_buf, tokenno)) {
+      const bool last = is_last_flit(current_output_buf, tokenno);
+      valid_flits++;
+      last_flits += last ? 1 : 0;
+      if (sample_count < 16) {
+        sample_data[sample_count] = get_flit(current_output_buf, tokenno);
+        sample_last[sample_count] = last ? 1 : 0;
+        sample_token[sample_count] = tokenno;
+        sample_count++;
+      }
+    }
+  }
+  if (valid_flits > 0) {
+    debug_send_events++;
+    if (debug_send_events <= 128) {
+      fprintf(stderr,
+              "SWITCH DEBUG ShmemPort send port=%d event=%llu round=%d "
+              "valid_flits=%d last_flits=%d marker=0x%016llx "
+              "sample0=0x%016llx/%d sample1=0x%016llx/%d "
+              "sample2=0x%016llx/%d sample3=0x%016llx/%d\n",
+              _portNo,
+              (unsigned long long)debug_send_events,
+              currentround,
+              valid_flits,
+              last_flits,
+              (unsigned long long)((uint64_t *)current_output_buf)[0],
+              (unsigned long long)sample_data[0],
+              sample_last[0],
+              (unsigned long long)sample_data[1],
+              sample_last[1],
+              (unsigned long long)sample_data[2],
+              sample_last[2],
+              (unsigned long long)sample_data[3],
+              sample_last[3]);
+      fflush(stderr);
+      for (int debug_idx = 0; debug_idx < sample_count; debug_idx++) {
+        fprintf(stderr,
+                "SWITCH DEBUG ShmemPort send_flit port=%d event=%llu "
+                "sample=%d token=%d data=0x%016llx last=%d\n",
+                _portNo,
+                (unsigned long long)debug_send_events,
+                debug_idx,
+                sample_token[debug_idx],
+                (unsigned long long)sample_data[debug_idx],
+                sample_last[debug_idx]);
+      }
+      fflush(stderr);
+    }
   }
   // mark flag to initiate "send"
   current_output_buf[BUFSIZE_BYTES] = 1;
@@ -175,6 +230,63 @@ void ShmemPort::recv() {
   while (*polladdr == 0) {
     ;
   } // poll
+  int valid_flits = 0;
+  int last_flits = 0;
+  int sample_count = 0;
+  uint64_t sample_data[16] = {0};
+  int sample_last[16] = {0};
+  int sample_token[16] = {0};
+  for (int tokenno = 0; tokenno < NUM_TOKENS; tokenno++) {
+    if (is_valid_flit(current_input_buf, tokenno)) {
+      const bool last = is_last_flit(current_input_buf, tokenno);
+      valid_flits++;
+      last_flits += last ? 1 : 0;
+      if (sample_count < 16) {
+        sample_data[sample_count] = get_flit(current_input_buf, tokenno);
+        sample_last[sample_count] = last ? 1 : 0;
+        sample_token[sample_count] = tokenno;
+        sample_count++;
+      }
+    }
+  }
+  const uint64_t marker = ((uint64_t *)current_input_buf)[0];
+  if (valid_flits > 0 || marker != 0) {
+    debug_recv_events++;
+    if (debug_recv_events <= 128 || marker == 0xDEADBEEFDEADBEEFL) {
+      fprintf(stderr,
+              "SWITCH DEBUG ShmemPort recv port=%d event=%llu round=%d "
+              "valid_flits=%d last_flits=%d marker=0x%016llx "
+              "sample0=0x%016llx/%d sample1=0x%016llx/%d "
+              "sample2=0x%016llx/%d sample3=0x%016llx/%d\n",
+              _portNo,
+              (unsigned long long)debug_recv_events,
+              currentround,
+              valid_flits,
+              last_flits,
+              (unsigned long long)marker,
+              (unsigned long long)sample_data[0],
+              sample_last[0],
+              (unsigned long long)sample_data[1],
+              sample_last[1],
+              (unsigned long long)sample_data[2],
+              sample_last[2],
+              (unsigned long long)sample_data[3],
+              sample_last[3]);
+      fflush(stderr);
+      for (int debug_idx = 0; debug_idx < sample_count; debug_idx++) {
+        fprintf(stderr,
+                "SWITCH DEBUG ShmemPort recv_flit port=%d event=%llu "
+                "sample=%d token=%d data=0x%016llx last=%d\n",
+                _portNo,
+                (unsigned long long)debug_recv_events,
+                debug_idx,
+                sample_token[debug_idx],
+                (unsigned long long)sample_data[debug_idx],
+                sample_last[debug_idx]);
+      }
+      fflush(stderr);
+    }
+  }
 }
 
 void ShmemPort::tick_pre() {

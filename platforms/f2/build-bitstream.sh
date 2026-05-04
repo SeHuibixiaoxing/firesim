@@ -119,6 +119,8 @@ source hdk_setup.sh -s
 ensure_shell_checkpoint
 
 export CL_DIR=$CL_DIR
+export BUILD_STRATEGY=$STRATEGY
+echo "Using BUILD_STRATEGY=${BUILD_STRATEGY}"
 
 # run build
 cd $CL_DIR/build/scripts

@@ -45,6 +45,8 @@ public:
 
 private:
   const CLOCKBRIDGEMODULE_struct mmio_addrs;
+
+  uint64_t read_u64(uint64_t lo_addr, uint64_t hi_addr, uint64_t latch_addr);
 };
 
 #endif // __CLOCK_H

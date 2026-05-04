@@ -1,4 +1,6 @@
 #include <cassert>
+#include <cstdint>
+#include <cstring>
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -205,11 +207,14 @@ void simif_f2_t::fpga_setup(int slot_id, const std::string &agfi) {
   check_rc(rc, "fpga_pci_attach BAR0 FAILED");
   printf("Attached to BAR0 (OCL)\n");
 
-  /* rh: attach to BAR4 (for now to do a PCIS cuz no XDMA)*/
+  /*
+   * BAR4 backs CPU-managed stream FIFOs. Do not map it write-combining:
+   * WC stores may merge/reorder FIFO pushes and reads are destructive.
+   */
   pci_bar4_handle = PCI_BAR_HANDLE_INIT;
-  rc = fpga_pci_attach(slot_id, FPGA_APP_PF, APP_PF_BAR4, BURST_CAPABLE, &pci_bar4_handle);
+  rc = fpga_pci_attach(slot_id, FPGA_APP_PF, APP_PF_BAR4, 0, &pci_bar4_handle);
   check_rc(rc, "fpga_pci_attach BAR4 FAILED");
-  printf("Attached to BAR4 (PCIS)\n");
+  printf("Attached to BAR4 (PCIS, non-WC)\n");
 }
 
 simif_f2_t::~simif_f2_t() { fpga_shutdown(); }
@@ -228,28 +233,41 @@ uint32_t simif_f2_t::read(size_t addr) {
   return value & 0xFFFFFFFF;
 }
 
-// rh: replace XDMA with 32b reads over the 512b beat
+// CPU-managed stream AXI is 64b wide on F2. Use 64b BAR4 accesses so the
+// stream engine sees full-width beats/strobes.
 size_t simif_f2_t::cpu_managed_axi4_read(size_t addr, char *data, size_t size) {
   // fprintf(stderr, "PCIS read:  addr=0x%lx size=%zu\n", addr, size); // rh: log PCIS reads
+  assert((size % sizeof(uint64_t)) == 0);
   size_t bytes_read = 0;
-  uint32_t *data32 = (uint32_t *)data;
-  size_t num_words = size / 4; // rh: should always be byte aligned since FPGAToCPUDriver has an assert
+  size_t num_words = size / sizeof(uint64_t);
   
   for (size_t i = 0; i < num_words; i++) {
-    int rc = fpga_pci_peek(pci_bar4_handle, addr + (i * 4), &data32[i]);
+    uint64_t word = 0;
+    int rc = fpga_pci_peek64(
+        pci_bar4_handle, addr + (i * sizeof(uint64_t)), &word);
     check_rc(rc, "PCIS read FAILED");
-    bytes_read += 4;
+    memcpy(data + bytes_read, &word, sizeof(uint64_t));
+    bytes_read += sizeof(uint64_t);
   }
   
   // fprintf(stderr, "PCIS read:  addr=0x%lx size=%zu SUCCESS (read %zu bytes)\n", addr, size, bytes_read);
   return bytes_read;
 }
 
-// rh: replace XDMA with burst
+// CPU-managed stream AXI is 64b wide on F2. A 32b BAR write can split one
+// stream beat into two partial-strobe transfers, which corrupts packed stream
+// payloads such as SimpleNIC bigtokens.
 size_t simif_f2_t::cpu_managed_axi4_write(size_t addr, const char *data, size_t size) {
   // fprintf(stderr, "PCIS write: addr=0x%lx size=%zu\n", addr, size); //rh: log PCIS writes
-  int rc = fpga_pci_write_burst(pci_bar4_handle, addr, (uint32_t *) data, size / 4);
-  check_rc(rc, "PCIS write FAILED");
+  assert((size % sizeof(uint64_t)) == 0);
+  size_t num_words = size / sizeof(uint64_t);
+  for (size_t i = 0; i < num_words; i++) {
+    uint64_t word = 0;
+    memcpy(&word, data + (i * sizeof(uint64_t)), sizeof(uint64_t));
+    int rc =
+        fpga_pci_poke64(pci_bar4_handle, addr + (i * sizeof(uint64_t)), word);
+    check_rc(rc, "PCIS write FAILED");
+  }
   // fprintf(stderr, "PCIS write: addr=0x%lx size=%zu SUCCESS\n", addr, size);
   return size;
 }
