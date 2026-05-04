@@ -159,8 +159,15 @@ static int repair_host_tap_egress(unsigned char *frame, int len) {
   unsigned char *tcp = ip + ihl_bytes;
   const int tcp_len = total_len - ihl_bytes;
   const int tcp_header_len = (tcp[12] >> 4) * 4;
-  if (tcp_header_len < 20 || tcp_len < tcp_header_len ||
-      tcp_len != tcp_header_len) {
+  if (tcp_header_len < 20 || tcp_len < tcp_header_len) {
+    return repaired;
+  }
+
+  const int tcp_src_port = switch_read_be16(tcp);
+  const int tcp_dst_port = switch_read_be16(tcp + 2);
+  const int tcp_payload_len = tcp_len - tcp_header_len;
+  const bool gdbserver_flow = tcp_src_port == 2345 || tcp_dst_port == 2345;
+  if (tcp_payload_len != 0 && !gdbserver_flow) {
     return repaired;
   }
 
