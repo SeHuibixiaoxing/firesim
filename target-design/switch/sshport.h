@@ -3,6 +3,8 @@
 
 #include <errno.h>
 #include <queue>
+#include <stdint.h>
+#include <string.h>
 
 #include <linux/if.h>
 #include <linux/if_tun.h>
@@ -67,6 +69,121 @@ static int tuntap_alloc(const char *dev, int flags) {
 }
 
 #define ceil_div(n, d) (((n)-1) / (d) + 1)
+
+static uint16_t switch_read_be16(const unsigned char *p) {
+  return ((uint16_t)p[0] << 8) | p[1];
+}
+
+static void switch_write_be16(unsigned char *p, uint16_t v) {
+  p[0] = (unsigned char)(v >> 8);
+  p[1] = (unsigned char)(v & 0xff);
+}
+
+static uint32_t switch_checksum_accumulate(uint32_t sum,
+                                           const unsigned char *data,
+                                           int len) {
+  while (len >= 2) {
+    sum += switch_read_be16(data);
+    data += 2;
+    len -= 2;
+  }
+  if (len == 1) {
+    sum += (uint16_t)data[0] << 8;
+  }
+  return sum;
+}
+
+static uint16_t switch_checksum_finish(uint32_t sum) {
+  while (sum >> 16) {
+    sum = (sum & 0xffff) + (sum >> 16);
+  }
+  return (uint16_t)(~sum & 0xffff);
+}
+
+static uint16_t switch_ipv4_header_checksum(const unsigned char *ip,
+                                            int ihl_bytes) {
+  return switch_checksum_finish(switch_checksum_accumulate(0, ip, ihl_bytes));
+}
+
+static uint16_t switch_tcp_checksum(const unsigned char *ip,
+                                    const unsigned char *tcp,
+                                    int tcp_len) {
+  uint32_t sum = 0;
+  sum = switch_checksum_accumulate(sum, ip + 12, 8);
+  sum += 0x0006;
+  sum += (uint16_t)tcp_len;
+  sum = switch_checksum_accumulate(sum, tcp, tcp_len);
+  return switch_checksum_finish(sum);
+}
+
+static int repair_host_tap_egress(unsigned char *frame, int len) {
+  enum {
+    REPAIR_ARP_SHA = 1,
+    REPAIR_IPV4_CHECKSUM = 2,
+    REPAIR_TCP_CHECKSUM = 4
+  };
+
+  if (len < 14) {
+    return 0;
+  }
+
+  int repaired = 0;
+  const uint16_t ethertype = switch_read_be16(frame + 12);
+
+  if (ethertype == 0x0806 && len >= 42 && switch_read_be16(frame + 14) == 1 &&
+      switch_read_be16(frame + 16) == 0x0800 && frame[18] == 6 &&
+      frame[19] == 4) {
+    if (memcmp(frame + 22, frame + 6, 6) != 0) {
+      memcpy(frame + 22, frame + 6, 6);
+      repaired |= REPAIR_ARP_SHA;
+    }
+  }
+
+  if (ethertype != 0x0800 || len < 34) {
+    return repaired;
+  }
+
+  unsigned char *ip = frame + 14;
+  const int version = ip[0] >> 4;
+  const int ihl_bytes = (ip[0] & 0x0f) * 4;
+  if (version != 4 || ihl_bytes < 20 || len < 14 + ihl_bytes ||
+      ip[9] != 6) {
+    return repaired;
+  }
+
+  const int total_len = switch_read_be16(ip + 2);
+  if (total_len < ihl_bytes + 20 || len < 14 + total_len) {
+    return repaired;
+  }
+
+  unsigned char *tcp = ip + ihl_bytes;
+  const int tcp_len = total_len - ihl_bytes;
+  const int tcp_header_len = (tcp[12] >> 4) * 4;
+  if (tcp_header_len < 20 || tcp_len < tcp_header_len ||
+      tcp_len != tcp_header_len) {
+    return repaired;
+  }
+
+  const uint16_t old_ip_checksum = switch_read_be16(ip + 10);
+  ip[10] = 0;
+  ip[11] = 0;
+  const uint16_t new_ip_checksum = switch_ipv4_header_checksum(ip, ihl_bytes);
+  switch_write_be16(ip + 10, new_ip_checksum);
+  if (old_ip_checksum != new_ip_checksum) {
+    repaired |= REPAIR_IPV4_CHECKSUM;
+  }
+
+  const uint16_t old_tcp_checksum = switch_read_be16(tcp + 16);
+  tcp[16] = 0;
+  tcp[17] = 0;
+  const uint16_t new_tcp_checksum = switch_tcp_checksum(ip, tcp, tcp_len);
+  switch_write_be16(tcp + 16, new_tcp_checksum);
+  if (old_tcp_checksum != new_tcp_checksum) {
+    repaired |= REPAIR_TCP_CHECKSUM;
+  }
+
+  return repaired;
+}
 
 SSHPort::SSHPort(int portNo) : BasePort(portNo, false) {
   char *slotid =
@@ -167,7 +284,8 @@ void SSHPort::send() {
 
   if (tap_can_send) {
     tap_len = tap_send_idx * sizeof(uint64_t) - NET_IP_ALIGN;
-    const unsigned char *frame = (const unsigned char *)tap_send_frame;
+    unsigned char *frame = (unsigned char *)tap_send_frame;
+    const int repair_mask = repair_host_tap_egress(frame, tap_len);
     const int check_len = tap_len < 14 ? tap_len : 14;
     bool zero_eth_head = tap_len > 0;
     for (int i = 0; i < check_len; i++) {
@@ -177,10 +295,11 @@ void SSHPort::send() {
     }
     const bool short_frame = tap_len < 14;
     debug_tap_send_events++;
-    if (debug_tap_send_events <= 128 || short_frame || zero_eth_head) {
+    if (debug_tap_send_events <= 128 || short_frame || zero_eth_head ||
+        repair_mask != 0) {
       fprintf(stderr,
               "SWITCH DEBUG SSHPort tap_send port=%d event=%llu "
-              "tap_len=%d flits=%d short=%d zero_eth_head=%d "
+              "tap_len=%d flits=%d short=%d zero_eth_head=%d repair=0x%x "
               "word0=0x%016llx word1=0x%016llx word2=0x%016llx "
               "bytes=%02x %02x %02x %02x %02x %02x %02x %02x "
               "%02x %02x %02x %02x %02x %02x %02x %02x\n",
@@ -190,6 +309,7 @@ void SSHPort::send() {
               tap_send_idx,
               short_frame ? 1 : 0,
               zero_eth_head ? 1 : 0,
+              repair_mask,
               (unsigned long long)tap_send_buffer[0],
               (unsigned long long)tap_send_buffer[1],
               (unsigned long long)tap_send_buffer[2],
