@@ -33,6 +33,7 @@ class BuildStrategy(Enum):
     BASIC = auto()
     AREA = auto()
     TIMING = auto()
+    TIMING_HOLDFIX = auto()
     EXPLORE = auto()
     CONGESTION = auto()
     NORETIMING = auto()

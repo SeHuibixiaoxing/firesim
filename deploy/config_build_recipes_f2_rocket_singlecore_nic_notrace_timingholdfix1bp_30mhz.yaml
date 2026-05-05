@@ -1,0 +1,20 @@
+# 1bp single-core Rocket NIC no-Trace F2 build using TIMING directives plus
+# explicit router hold fixing. This keeps the same target hardware config as the
+# historical passing 1bp path (FireSimRocketNICNoTraceConfig + BaseF2Config),
+# but asks Vivado to continue hold expansion in route instead of leaving the
+# large hold set to post-route phys_opt.
+
+firesim_rocket_singlecore_nic_notrace_timingholdfix1bp_30mhz:
+    PLATFORM: f2
+    TARGET_PROJECT: firesim
+    TARGET_PROJECT_MAKEFRAG: ../../../generators/firechip/chip/src/main/makefrag/firesim
+    DESIGN: FireSim
+    TARGET_CONFIG: FireSimRocketNICNoTraceConfig
+    PLATFORM_CONFIG: BaseF2Config
+    deploy_quintuplet: null
+    platform_config_args:
+        fpga_frequency: 30
+        build_strategy: TIMING_HOLDFIX
+    post_build_hook: null
+    metasim_customruntimeconfig: null
+    bit_builder_recipe: bit-builder-recipes/f2.yaml
