@@ -163,8 +163,12 @@ ShmemPort::ShmemPort(int portNo, char *shmemportname, bool uplink)
 }
 
 void ShmemPort::send() {
-  // Preserve the empty-round marker in shared memory. The SimpleNIC endpoint
-  // uses it to avoid scanning/copying a full empty network batch.
+  if (((uint64_t *)current_output_buf)[0] == 0xDEADBEEFDEADBEEFL) {
+    // Shmem ports exchange full buffers. Clear the compressed-empty marker so
+    // the peer cannot decode marker bits as valid/last flit metadata.
+    ((uint64_t *)current_output_buf)[0] = 0L;
+  }
+
   int valid_flits = 0;
   int last_flits = 0;
   int sample_count = 0;
