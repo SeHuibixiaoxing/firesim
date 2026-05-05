@@ -1,0 +1,21 @@
+# 1bp single-core Rocket NIC no-Trace F2 build using the CONGESTION strategy.
+# This keeps the same target hardware config as the historical 1bp path
+# (FireSimRocketNICNoTraceConfig + BaseF2Config) while disabling post-route
+# phys_opt in the F2 implementation strategy. It is intended as a fallback for
+# the 2026-05-04 TIMING build that routed but crashed in Vivado hold-fix
+# post-route phys_opt before AGFI creation.
+
+firesim_rocket_singlecore_nic_notrace_congestion1bp_30mhz:
+    PLATFORM: f2
+    TARGET_PROJECT: firesim
+    TARGET_PROJECT_MAKEFRAG: ../../../generators/firechip/chip/src/main/makefrag/firesim
+    DESIGN: FireSim
+    TARGET_CONFIG: FireSimRocketNICNoTraceConfig
+    PLATFORM_CONFIG: BaseF2Config
+    deploy_quintuplet: null
+    platform_config_args:
+        fpga_frequency: 30
+        build_strategy: CONGESTION
+    post_build_hook: null
+    metasim_customruntimeconfig: null
+    bit_builder_recipe: bit-builder-recipes/f2.yaml
