@@ -1,0 +1,5 @@
+firesim_rocket_singlecore_nic_notrace_30mhz:
+    agfi: agfi-03d9518415ec82449
+    driver_tar: /home/ubuntu/chipyard/tmp/firesim-aws-f2/driver-bundles/agfi03d951-timingholdfixpcisreg1bp-20260505/driver-bundle.tar.gz
+    deploy_quintuplet_override: null
+    custom_runtime_config: null
