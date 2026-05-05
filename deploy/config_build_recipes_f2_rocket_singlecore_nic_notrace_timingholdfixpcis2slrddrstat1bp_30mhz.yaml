@@ -1,0 +1,19 @@
+# 1bp single-core Rocket NIC no-Trace F2 build using TIMING_HOLDFIX, with the
+# source tree adding two PCIS shell-boundary register slices and split DDR stat
+# data/control pipelines. This is the conservative fallback for the ordinary
+# TIMING DDR-stat experiment and is still a non-8BP target.
+
+firesim_rocket_singlecore_nic_notrace_timingholdfixpcis2slrddrstat1bp_30mhz:
+    PLATFORM: f2
+    TARGET_PROJECT: firesim
+    TARGET_PROJECT_MAKEFRAG: ../../../generators/firechip/chip/src/main/makefrag/firesim
+    DESIGN: FireSim
+    TARGET_CONFIG: FireSimRocketNICNoTraceConfig
+    PLATFORM_CONFIG: BaseF2Config
+    deploy_quintuplet: null
+    platform_config_args:
+        fpga_frequency: 30
+        build_strategy: TIMING_HOLDFIX
+    post_build_hook: null
+    metasim_customruntimeconfig: null
+    bit_builder_recipe: bit-builder-recipes/f2.yaml

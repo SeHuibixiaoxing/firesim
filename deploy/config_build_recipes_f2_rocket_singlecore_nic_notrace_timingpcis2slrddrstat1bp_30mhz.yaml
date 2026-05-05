@@ -1,0 +1,19 @@
+# 1bp single-core Rocket NIC no-Trace F2 build using ordinary TIMING, with the
+# source tree adding two PCIS shell-boundary register slices and split DDR stat
+# data/control pipelines. This is a timing-closure experiment only; it does not
+# enable the 8BP target.
+
+firesim_rocket_singlecore_nic_notrace_timingpcis2slrddrstat1bp_30mhz:
+    PLATFORM: f2
+    TARGET_PROJECT: firesim
+    TARGET_PROJECT_MAKEFRAG: ../../../generators/firechip/chip/src/main/makefrag/firesim
+    DESIGN: FireSim
+    TARGET_CONFIG: FireSimRocketNICNoTraceConfig
+    PLATFORM_CONFIG: BaseF2Config
+    deploy_quintuplet: null
+    platform_config_args:
+        fpga_frequency: 30
+        build_strategy: TIMING
+    post_build_hook: null
+    metasim_customruntimeconfig: null
+    bit_builder_recipe: bit-builder-recipes/f2.yaml
