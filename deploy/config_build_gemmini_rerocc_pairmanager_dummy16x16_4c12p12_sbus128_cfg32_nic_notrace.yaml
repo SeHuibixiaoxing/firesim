@@ -1,0 +1,24 @@
+# Build-time config for the cfg32 alias of the 4-core / 12-pair /
+# 128-bit-sbus NIC-enabled pair-manager target with TraceIO disabled.
+#
+# Purpose: resource-reduced fallback for pipeline-runtime remote gdbserver
+# debugging. This variant keeps NIC, block device, FASED, and the default
+# FireSim bridge set, but disables target TraceIO so WithTracerVBridge has no
+# trace ports to elaborate.
+
+build_farm:
+  base_recipe: build-farm-recipes/aws_ec2.yaml
+  recipe_arg_overrides:
+    build_farm_tag: pairdummycfg32nicntz1d3bf
+    instance_type: z1d.3xlarge
+    build_instance_market: ondemand
+    spot_interruption_behavior: terminate
+    spot_max_price: ondemand
+    default_build_dir: /home/ubuntu/firesim-build
+
+builds_to_run:
+  - firesim_gemmini_rerocc_pairmanager_dummy16x16_4c12p12_sbus128_cfg32_nic_notrace
+
+agfis_to_share: []
+
+share_with_accounts: {}
