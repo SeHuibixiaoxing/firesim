@@ -1,0 +1,19 @@
+# Build the 1bp single-core Rocket NIC no-Trace F2 bitstream with
+# TIMING_HOLDFIX plus the explicit PCIS shell-boundary register slice.
+
+build_farm:
+  base_recipe: build-farm-recipes/aws_ec2.yaml
+  recipe_arg_overrides:
+    build_farm_tag: f2rocketsinglecorenictimholdfixpcisreg1bpbuild
+    instance_type: m8i.2xlarge
+    build_instance_market: ondemand
+    spot_interruption_behavior: terminate
+    spot_max_price: ondemand
+    default_build_dir: /home/ubuntu/firesim-build
+
+builds_to_run:
+  - firesim_rocket_singlecore_nic_notrace_timingholdfixpcisreg1bp_30mhz
+
+agfis_to_share: []
+
+share_with_accounts: {}

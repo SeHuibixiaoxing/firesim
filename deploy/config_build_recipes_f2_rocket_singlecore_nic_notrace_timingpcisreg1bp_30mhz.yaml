@@ -1,0 +1,19 @@
+# 1bp single-core Rocket NIC no-Trace F2 build using the ordinary TIMING
+# strategy, with the source tree adding CL_DMA_PCIS_SLV/AXI4_REG_SLC_PCIS_SLR1
+# at the PCIS shell boundary. This isolates the effect of restoring a
+# floorplan-constrained PCIS register slice without changing to an 8BP target.
+
+firesim_rocket_singlecore_nic_notrace_timingpcisreg1bp_30mhz:
+    PLATFORM: f2
+    TARGET_PROJECT: firesim
+    TARGET_PROJECT_MAKEFRAG: ../../../generators/firechip/chip/src/main/makefrag/firesim
+    DESIGN: FireSim
+    TARGET_CONFIG: FireSimRocketNICNoTraceConfig
+    PLATFORM_CONFIG: BaseF2Config
+    deploy_quintuplet: null
+    platform_config_args:
+        fpga_frequency: 30
+        build_strategy: TIMING
+    post_build_hook: null
+    metasim_customruntimeconfig: null
+    bit_builder_recipe: bit-builder-recipes/f2.yaml
