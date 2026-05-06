@@ -1,0 +1,19 @@
+# 12-pair cfg32 NIC noTrace F2 build for pipeline-runtime debugging.
+#
+# This keeps the 4-core/12-pair ReRoCC PairManager topology and ordinary TIMING
+# strategy, but reduces the target datapath pressure by using a 64-bit system
+# bus/NoC width and dummy 8x8 Gemmini meshes.
+firesim_gemmini_rerocc_pairmanager_dummy8x8_4c12p12_sbus64_cfg32_nic_notrace:
+    PLATFORM: f2
+    TARGET_PROJECT: firesim
+    TARGET_PROJECT_MAKEFRAG: ../../../generators/firechip/chip/src/main/makefrag/firesim
+    DESIGN: FireSim
+    TARGET_CONFIG: FireSimGemminiReRoCCPairDummy8x8C4P12Sbus64NICNoTraceConfig
+    PLATFORM_CONFIG: FRFCFS16GBQuadRank_BaseF2Config
+    deploy_quintuplet: null
+    platform_config_args:
+        fpga_frequency: 20
+        build_strategy: TIMING
+    post_build_hook: null
+    metasim_customruntimeconfig: null
+    bit_builder_recipe: bit-builder-recipes/f2.yaml

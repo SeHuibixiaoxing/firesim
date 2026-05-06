@@ -1,0 +1,19 @@
+# Build the 12-pair cfg32 NIC noTrace pipeline-runtime debug target with
+# ordinary TIMING, a 64-bit system bus/NoC width, and dummy 8x8 Gemmini meshes.
+
+build_farm:
+  base_recipe: build-farm-recipes/aws_ec2.yaml
+  recipe_arg_overrides:
+    build_farm_tag: pairdummy8x8sbus64cfg32nicntbf
+    instance_type: z1d.3xlarge
+    build_instance_market: ondemand
+    spot_interruption_behavior: terminate
+    spot_max_price: ondemand
+    default_build_dir: /home/ubuntu/firesim-build
+
+builds_to_run:
+  - firesim_gemmini_rerocc_pairmanager_dummy8x8_4c12p12_sbus64_cfg32_nic_notrace
+
+agfis_to_share: []
+
+share_with_accounts: {}
