@@ -34,7 +34,7 @@ target_config:
   net_bandwidth: 200
   profile_interval: -1
   default_hw_config: firesim_gemmini_rerocc_pairmanager_dummy8x8_4c12p12_sbus64_cfg32_nic_notrace
-  plusarg_passthrough: ""
+  plusarg_passthrough: "+simplenic-relaxed-required-bytes=1 +simplenic-empty-switch-poll-interval=1024 +simplenic-token-debug=0 +cpu-managed-stream-debug=0 +heartbeat-polling-interval=100000000"
 
 tracing:
   enable: no
