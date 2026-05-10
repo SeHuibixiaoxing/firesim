@@ -1,0 +1,21 @@
+# Build the 2-core/6-pair dummy8x8 sbus64 NIC hardware-debug target for F2.
+#
+# This is the larger follow-up target. Do not launch it before the 1C1P Linux/F2
+# probe validates the hardware observability path.
+
+build_farm:
+  base_recipe: build-farm-recipes/aws_ec2.yaml
+  recipe_arg_overrides:
+    build_farm_tag: pairdummy8x8sbus64c2p6hwdbg
+    instance_type: z1d.3xlarge
+    build_instance_market: ondemand
+    spot_interruption_behavior: terminate
+    spot_max_price: ondemand
+    default_build_dir: /home/ubuntu/firesim-build
+
+builds_to_run:
+  - firesim_gemmini_rerocc_pairmanager_dummy8x8_2c6p6_sbus64_nic_hwdebug
+
+agfis_to_share: []
+
+share_with_accounts: {}
