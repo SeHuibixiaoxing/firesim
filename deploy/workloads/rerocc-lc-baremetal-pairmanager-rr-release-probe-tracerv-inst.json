@@ -1,0 +1,12 @@
+{
+	"benchmark_name": "rerocc-lc-baremetal-pairmanager-rr-release-probe-tracerv-inst",
+	"common_simulation_outputs": [
+		"uartlog",
+		"memory_stats*.csv",
+		"TRACEFILE*",
+		"AUTOCOUNTERFILE*",
+		"metasim_stderr.out"
+	],
+	"common_bootbinary": "../../../../../generators/gemmini/software/gemmini-rocc-tests/rerocc-baremetal-tests-coupleddma/workload/rerocc_lc_pairmanager_rr_release_probe_tracerv_inst.riscv",
+	"common_rootfs": "../../../../../software/firemarshal/boards/default/installers/firesim/dummy.rootfs"
+}

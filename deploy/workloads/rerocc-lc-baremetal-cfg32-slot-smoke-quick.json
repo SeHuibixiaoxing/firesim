@@ -1,0 +1,12 @@
+{
+	"benchmark_name": "rerocc-lc-baremetal-cfg32-slot-smoke-quick",
+	"common_simulation_outputs": [
+		"uartlog",
+		"memory_stats*.csv",
+		"TRACEFILE*",
+		"AUTOCOUNTERFILE*",
+		"metasim_stderr.out"
+	],
+	"common_bootbinary": "../../../../../generators/gemmini/software/gemmini-rocc-tests/rerocc-baremetal-tests-coupleddma/workload/rerocc_lc_cfg32_slot_smoke_quick.riscv",
+	"common_rootfs": null
+}

@@ -1,0 +1,14 @@
+firesim_gemmini_rerocc_pairmanager_dummy8x8_1c1p1_sbus64_nic_hwdebug:
+    PLATFORM: f2
+    TARGET_PROJECT: firesim
+    TARGET_PROJECT_MAKEFRAG: ../../../generators/firechip/chip/src/main/makefrag/firesim
+    DESIGN: FireSim
+    TARGET_CONFIG: FireSimGemminiReRoCCPairDummy8x8C1P1Sbus64NICDebugConfig
+    PLATFORM_CONFIG: WithPrintfSynthesis_WithAutoCounter_WithSynthAsserts_FRFCFS16GBQuadRank_BaseF2Config
+    deploy_quintuplet: null
+    platform_config_args:
+        fpga_frequency: 20
+        build_strategy: TIMING
+    post_build_hook: null
+    metasim_customruntimeconfig: null
+    bit_builder_recipe: bit-builder-recipes/f2.yaml
