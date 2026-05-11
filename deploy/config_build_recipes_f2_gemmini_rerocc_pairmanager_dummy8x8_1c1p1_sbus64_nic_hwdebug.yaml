@@ -8,7 +8,7 @@ firesim_gemmini_rerocc_pairmanager_dummy8x8_1c1p1_sbus64_nic_hwdebug:
     deploy_quintuplet: null
     platform_config_args:
         fpga_frequency: 20
-        build_strategy: TIMING_HOLDFIX
+        build_strategy: TIMING
     post_build_hook: null
     metasim_customruntimeconfig: null
     bit_builder_recipe: bit-builder-recipes/f2.yaml
