@@ -1,4 +1,4 @@
 firesim_gemmini_rerocc_pairmanager_dummy8x8_1c1p1_sbus64_nic_hwdebug:
-    agfi: agfi-0795d5917b247dfb7
+    agfi: agfi-098bce7d5e0c3d937
     deploy_quintuplet_override: null
     custom_runtime_config: null
