@@ -14,9 +14,10 @@ import freechips.rocketchip.util.DecoupledHelper
 import freechips.rocketchip.diplomacy._
 import org.chipsalliance.cde.config.{Field, Parameters}
 
-import midas.PrintfLogger
+import midas.{EnableTargetCycleDebug, PrintfLogger}
 import midas.widgets._
 import midas.passes.HostClockSource
+import midas.passes.fame.{DecoupledForwardChannel, FAMEChannelConnectionAnnotation, FAMEChannelFanoutAnnotation, PipeChannel}
 
 import firesim.lib.nasti._
 import firesim.lib.bridgeutils._
@@ -147,6 +148,45 @@ class FPGATop(implicit p: Parameters) extends LazyModule with HasWidgets {
   val bridgeAnnos                                                                              = p(SimWrapperKey).annotations.collect { case ba: BridgeIOAnnotation => ba }
   val bridgeModuleMap: ListMap[BridgeIOAnnotation, BridgeModule[_ <: Record with HasChannels]] =
     ListMap((bridgeAnnos.map(anno => anno -> addWidget(BridgeIOAnnotationToElaboration(anno)))): _*)
+
+  private val isSecondaryFanout = p(SimWrapperKey).annotations.collect {
+    case ffa: FAMEChannelFanoutAnnotation => ffa.channelNames.tail
+  }.flatten.toSet
+
+  private val debugChannelAnnos = p(SimWrapperKey).annotations.collect {
+    case fca: FAMEChannelConnectionAnnotation => fca
+  }.filterNot {
+    case FAMEChannelConnectionAnnotation(_, _, _, Some(_), Some(_)) => true
+    case fca @ FAMEChannelConnectionAnnotation(_, _, _, _, Some(_)) => isSecondaryFanout(fca.globalName)
+    case _                                                          => false
+  }
+
+  private def clippedChannelNames(select: FAMEChannelConnectionAnnotation => Boolean): Seq[String] =
+    debugChannelAnnos.filter(select).map(_.globalName).sorted.take(TargetCycleDebugWidget.MaskBits)
+
+  val targetCycleDebugParams = TargetCycleDebugParameters(
+    hportLabels       = Seq.empty,
+    wireInputLabels   = clippedChannelNames {
+      case FAMEChannelConnectionAnnotation(_, PipeChannel(_), _, None, Some(_)) => true
+      case _                                                                         => false
+    },
+    wireOutputLabels  = clippedChannelNames {
+      case FAMEChannelConnectionAnnotation(_, PipeChannel(_), _, Some(_), None) => true
+      case _                                                                         => false
+    },
+    rvInputLabels     = clippedChannelNames {
+      case FAMEChannelConnectionAnnotation(_, _: DecoupledForwardChannel, _, None, Some(_)) => true
+      case _                                                                                => false
+    },
+    rvOutputLabels    = clippedChannelNames {
+      case FAMEChannelConnectionAnnotation(_, _: DecoupledForwardChannel, _, Some(_), None) => true
+      case _                                                                                => false
+    },
+  )
+
+  val targetCycleDebugWidget = Option.when(p(EnableTargetCycleDebug)) {
+    addWidget(new TargetCycleDebugWidget(targetCycleDebugParams))
+  }
 
   // Find all bridges that wish to be allocated FPGA DRAM, and group them
   // according to their memoryRegionName. Requested addresses will be unified
@@ -576,6 +616,47 @@ class FPGATopImp(outer: FPGATop)(implicit p: Parameters) extends LazyModuleImp(o
       case hp: ChannelizedHostPortIO => ChannelizedHostPortIOConnectChannels2Port(hp, bridgeAnno, simIo)
     }
   })
+
+  outer.targetCycleDebugWidget.foreach { widget =>
+    def packMask(labels: Seq[String], signals: Map[String, Bool]): UInt = {
+      val liveBits = labels.map(name => signals.getOrElse(name, false.B))
+      VecInit(liveBits ++ Seq.fill(TargetCycleDebugWidget.MaskBits - liveBits.size)(false.B)).asUInt
+    }
+
+    val wireInputValid = simIo.wireInputPortMap.map { case (name, port) => name -> port.valid }
+    val wireInputReady = simIo.wireInputPortMap.map { case (name, port) => name -> port.ready }
+    val wireOutputValid = simIo.wireOutputPortMap.map { case (name, port) => name -> port.valid }
+    val wireOutputReady = simIo.wireOutputPortMap.map { case (name, port) => name -> port.ready }
+
+    val rvInputFwdValid = simIo.rvInputPortMap.map { case (name, port) => name -> port._1.valid }
+    val rvInputFwdReady = simIo.rvInputPortMap.map { case (name, port) => name -> port._1.ready }
+    val rvInputRevValid = simIo.rvInputPortMap.map { case (name, port) => name -> port._2.valid }
+    val rvInputRevReady = simIo.rvInputPortMap.map { case (name, port) => name -> port._2.ready }
+
+    val rvOutputFwdValid = simIo.rvOutputPortMap.map { case (name, port) => name -> port._1.valid }
+    val rvOutputFwdReady = simIo.rvOutputPortMap.map { case (name, port) => name -> port._1.ready }
+    val rvOutputRevValid = simIo.rvOutputPortMap.map { case (name, port) => name -> port._2.valid }
+    val rvOutputRevReady = simIo.rvOutputPortMap.map { case (name, port) => name -> port._2.ready }
+
+    val debug = widget.module.io.debug
+    debug.trigger := false.B
+    debug.hportToHostValid := 0.U
+    debug.hportToHostReady := 0.U
+    debug.hportFromHostValid := 0.U
+    debug.hportFromHostReady := 0.U
+    debug.wireInputValid := packMask(outer.targetCycleDebugParams.wireInputLabels, wireInputValid)
+    debug.wireInputReady := packMask(outer.targetCycleDebugParams.wireInputLabels, wireInputReady)
+    debug.wireOutputValid := packMask(outer.targetCycleDebugParams.wireOutputLabels, wireOutputValid)
+    debug.wireOutputReady := packMask(outer.targetCycleDebugParams.wireOutputLabels, wireOutputReady)
+    debug.rvInputFwdValid := packMask(outer.targetCycleDebugParams.rvInputLabels, rvInputFwdValid)
+    debug.rvInputFwdReady := packMask(outer.targetCycleDebugParams.rvInputLabels, rvInputFwdReady)
+    debug.rvInputRevValid := packMask(outer.targetCycleDebugParams.rvInputLabels, rvInputRevValid)
+    debug.rvInputRevReady := packMask(outer.targetCycleDebugParams.rvInputLabels, rvInputRevReady)
+    debug.rvOutputFwdValid := packMask(outer.targetCycleDebugParams.rvOutputLabels, rvOutputFwdValid)
+    debug.rvOutputFwdReady := packMask(outer.targetCycleDebugParams.rvOutputLabels, rvOutputFwdReady)
+    debug.rvOutputRevValid := packMask(outer.targetCycleDebugParams.rvOutputLabels, rvOutputRevValid)
+    debug.rvOutputRevReady := packMask(outer.targetCycleDebugParams.rvOutputLabels, rvOutputRevReady)
+  }
 
   outer.printStreamSummary(outer.toCPUStreamParams, "Bridge Streams To CPU:")
   outer.printStreamSummary(outer.fromCPUStreamParams, "Bridge Streams From CPU:")

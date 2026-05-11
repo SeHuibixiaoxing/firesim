@@ -17,6 +17,11 @@ class WithPrintfSynthesis
       true
     })
 
+class WithTargetCycleDebug
+    extends Config((_, _, _) => { case midas.EnableTargetCycleDebug =>
+      true
+    })
+
 // MIDAS 2.0 Switches
 class WithMultiCycleRamModels
     extends Config((_, _, _) => { case midas.GenerateMultiCycleRamModels =>
