@@ -287,6 +287,7 @@ class AWSEC2(BuildFarm):
     build_instance_market: str
     spot_interruption_behavior: str
     spot_max_price: str
+    ami_id: Optional[str]
     build_host_swap_size_gb: int
     build_host_swappiness: int
     build_host_swapfile_path: str
@@ -324,6 +325,7 @@ class AWSEC2(BuildFarm):
         self.build_instance_market = self.args["build_instance_market"]
         self.spot_interruption_behavior = self.args["spot_interruption_behavior"]
         self.spot_max_price = self.args["spot_max_price"]
+        self.ami_id = self.args.get("ami_id", None)
         self.build_host_swap_size_gb = int(self.args.get("build_host_swap_size_gb", 0))
         self.build_host_swappiness = int(self.args.get("build_host_swappiness", 10))
         self.build_host_swapfile_path = self.args.get(
@@ -439,6 +441,7 @@ echo {shlex.quote(swappiness_entry)} | sudo tee -a /etc/sysctl.conf >/dev/null
             ],
             tags={"fsimbuildcluster": self.build_farm_tag},
             randomsubnet=True,
+            ami_id=self.ami_id,
         )[0]
 
         self.build_hosts.append(

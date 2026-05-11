@@ -8,6 +8,7 @@ build_farm:
   recipe_arg_overrides:
     build_farm_tag: pairdummy8x8sbus64c2p6hwdbg
     instance_type: z1d.3xlarge
+    ami_id: ami-082c5db2375456e1a
     build_instance_market: ondemand
     spot_interruption_behavior: terminate
     spot_max_price: ondemand
