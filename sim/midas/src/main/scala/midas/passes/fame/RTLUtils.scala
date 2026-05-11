@@ -51,8 +51,19 @@ sealed trait BinaryBooleanOp {
   def op: PrimOp
   def apply(l: Expression, r: Expression): DoPrim = DoPrim(op, Seq(l, r), Nil, BoolType)
   def reduce(args: Iterable[Expression]): Expression = {
-    require(args.nonEmpty)
-    args.tail.foldLeft(args.head) { (l, r) => apply(l, r) }
+    val exprs = args.toIndexedSeq
+    require(exprs.nonEmpty)
+
+    def reduceRange(lo: Int, hi: Int): Expression = {
+      if (hi - lo == 1) {
+        exprs(lo)
+      } else {
+        val mid = lo + (hi - lo) / 2
+        apply(reduceRange(lo, mid), reduceRange(mid, hi))
+      }
+    }
+
+    reduceRange(0, exprs.length)
   }
 }
 
