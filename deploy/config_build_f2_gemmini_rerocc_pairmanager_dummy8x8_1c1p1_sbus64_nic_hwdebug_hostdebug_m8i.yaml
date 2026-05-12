@@ -11,6 +11,7 @@ build_farm:
     build_instance_market: ondemand
     spot_interruption_behavior: terminate
     spot_max_price: ondemand
+    launch_instances_timeout_minutes: 60
     default_build_dir: /home/ubuntu/firesim-build
 
 builds_to_run:

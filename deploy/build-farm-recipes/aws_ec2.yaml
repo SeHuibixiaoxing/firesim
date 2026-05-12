@@ -29,6 +29,8 @@ args:
     spot_interruption_behavior: terminate
     # if using spot instances, determine the max price
     spot_max_price: ondemand
+    # how long to keep retrying across subnets when AWS reports no capacity
+    launch_instances_timeout_minutes: 0
     # default location of build directory on build host
     default_build_dir: /home/ubuntu/firesim-build
     # managerinit arg end

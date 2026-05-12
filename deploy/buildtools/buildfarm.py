@@ -7,6 +7,7 @@ import os
 import shlex
 import subprocess
 import time
+from datetime import timedelta
 
 from awstools.awstools import (
     aws_resource_names,
@@ -288,6 +289,7 @@ class AWSEC2(BuildFarm):
     spot_interruption_behavior: str
     spot_max_price: str
     ami_id: Optional[str]
+    launch_timeout: timedelta
     build_host_swap_size_gb: int
     build_host_swappiness: int
     build_host_swapfile_path: str
@@ -326,6 +328,12 @@ class AWSEC2(BuildFarm):
         self.spot_interruption_behavior = self.args["spot_interruption_behavior"]
         self.spot_max_price = self.args["spot_max_price"]
         self.ami_id = self.args.get("ami_id", None)
+        if "launch_instances_timeout_minutes" in self.args:
+            self.launch_timeout = timedelta(
+                minutes=int(self.args["launch_instances_timeout_minutes"])
+            )
+        else:
+            self.launch_timeout = timedelta()
         self.build_host_swap_size_gb = int(self.args.get("build_host_swap_size_gb", 0))
         self.build_host_swappiness = int(self.args.get("build_host_swappiness", 10))
         self.build_host_swapfile_path = self.args.get(
@@ -441,6 +449,7 @@ echo {shlex.quote(swappiness_entry)} | sudo tee -a /etc/sysctl.conf >/dev/null
             ],
             tags={"fsimbuildcluster": self.build_farm_tag},
             randomsubnet=True,
+            timeout=self.launch_timeout,
             ami_id=self.ami_id,
         )[0]
 
