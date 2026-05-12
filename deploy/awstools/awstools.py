@@ -705,6 +705,7 @@ def launch_run_instances(
     spotmaxprice: str,
     timeout: timedelta,
     always_expand: bool,
+    ami_id: Optional[str] = None,
 ) -> List[EC2InstanceResource]:
     return launch_instances(
         instancetype,
@@ -724,6 +725,7 @@ def launch_run_instances(
             },
         ],
         tags={"fsimcluster": fsimclustertag},
+        ami_id=ami_id,
     )
 
 

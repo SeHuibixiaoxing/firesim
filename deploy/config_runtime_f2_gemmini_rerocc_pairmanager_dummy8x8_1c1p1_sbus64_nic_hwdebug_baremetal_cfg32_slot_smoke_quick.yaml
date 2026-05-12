@@ -8,6 +8,7 @@ run_farm:
     always_expand_run_farm: true
     launch_instances_timeout_minutes: 60
     run_instance_market: ondemand
+    ami_id: ami-0d7cdfb6b3ce5b5e0
     spot_interruption_behavior: terminate
     spot_max_price: ondemand
     run_farm_hosts_to_use:

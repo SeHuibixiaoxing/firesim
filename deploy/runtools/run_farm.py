@@ -364,6 +364,7 @@ class AWSEC2F2(RunFarm):
     run_instance_market: str
     spot_interruption_behavior: str
     spot_max_price: str
+    ami_id: Optional[str]
 
     def __init__(self, args: Dict[str, Any], metasimulation_enabled: bool) -> None:
         super().__init__(args, metasimulation_enabled)
@@ -404,6 +405,7 @@ class AWSEC2F2(RunFarm):
         self.run_instance_market = self.args["run_instance_market"]
         self.spot_interruption_behavior = self.args["spot_interruption_behavior"]
         self.spot_max_price = self.args["spot_max_price"]
+        self.ami_id = self.args.get("ami_id", None)
 
         dispatch_dict = dict(
             [(x.__name__, x) for x in inheritors(InstanceDeployManager)]
@@ -566,6 +568,7 @@ class AWSEC2F2(RunFarm):
                 spotmaxprice,
                 timeout,
                 always_expand,
+                ami_id=self.ami_id,
             )
 
         # wait for instances to get to running state, so that they have been

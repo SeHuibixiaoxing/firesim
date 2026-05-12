@@ -7,6 +7,7 @@ run_farm:
     run_farm_tag: pairbertb8d12s64gdbcfg32nicnt
     always_expand_run_farm: true
     launch_instances_timeout_minutes: 60
+    ami_id: ami-0d7cdfb6b3ce5b5e0
     run_instance_market: ondemand
     spot_interruption_behavior: terminate
     spot_max_price: ondemand
