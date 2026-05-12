@@ -1,0 +1,19 @@
+{
+	"benchmark_name": "rerocc-lc-linux-coupleddma-bertmini-pipeline-runtime-batch8-fileonly-sync-pairdummy-sbus64-dummy8x8-g6",
+	"common_simulation_outputs": [
+		"uartlog"
+	],
+	"common_bootbinary": "../../../../../software/firemarshal/images/firechip/rerocc-lc-linux-coupleddma-bertmini-pipeline-runtime-batch8-fileonly-sync-pairdummy-sbus64-dummy8x8-g6/rerocc-lc-linux-coupleddma-bertmini-pipeline-runtime-batch8-fileonly-sync-pairdummy-sbus64-dummy8x8-g6-bin",
+	"common_rootfs": "../../../../../software/firemarshal/images/firechip/rerocc-lc-linux-coupleddma-bertmini-pipeline-runtime-batch8-fileonly-sync-pairdummy-sbus64-dummy8x8-g6/rerocc-lc-linux-coupleddma-bertmini-pipeline-runtime-batch8-fileonly-sync-pairdummy-sbus64-dummy8x8-g6.img",
+	"common_outputs": [
+		"/root/pipeline-runtime-debug/bertmini-batch8.log",
+		"/root/pipeline-runtime-debug/bertmini-batch8.deep.log",
+		"/root/pipeline-runtime-debug/bertmini-batch8.audit.log",
+		"/root/pipeline-runtime-debug/bertmini-batch8.checkpoint.log",
+		"/root/pipeline-runtime-debug/bertmini-batch8.breadcrumb.bin",
+		"/root/pipeline-runtime-debug/bertmini-batch8.status",
+		"/root/pipeline-runtime-debug/traces/ours2.trace",
+		"/root/pipeline-runtime-debug/traces/gemini2.trace",
+		"/root/pipeline-runtime-debug/traces/tangram2.trace"
+	]
+}
