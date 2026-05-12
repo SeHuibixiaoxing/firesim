@@ -43,10 +43,16 @@ public:
    */
   uint64_t hcycle();
 
+  uint32_t debug_status();
+  uint32_t debug_token_fire_count();
+  uint32_t debug_token_bits_lo();
+  uint32_t debug_num_clocks();
+
 private:
   const CLOCKBRIDGEMODULE_struct mmio_addrs;
 
   uint64_t read_u64(uint64_t lo_addr, uint64_t hi_addr, uint64_t latch_addr);
+  uint32_t read_debug_word(unsigned word_index);
 };
 
 #endif // __CLOCK_H

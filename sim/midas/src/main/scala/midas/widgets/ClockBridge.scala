@@ -68,6 +68,29 @@ class ClockBridgeModule(params: ClockParameters)(implicit p: Parameters) extends
     when(hPort.clocks.fire && hPort.clocks.bits(fastestClockIdx)) {
       tCycleFastest := tCycleFastest + 1.U
     }
+
+    if (p(midas.EnableHostControlDebug)) {
+      val tokenFireCount = RegInit(0.U(32.W))
+      when(hPort.clocks.fire) {
+        tokenFireCount := tokenFireCount + 1.U
+      }
+
+      val tokenBits   = hPort.clocks.bits.asUInt
+      val tokenBitsLo = if (clockInfo.size >= 32) tokenBits(31, 0) else tokenBits.pad(32)
+      val status      = Cat(
+        0.U(27.W),
+        reset.asBool,
+        tokenBits.orR,
+        hPort.clocks.fire,
+        hPort.clocks.ready,
+        hPort.clocks.valid,
+      )
+
+      attach(status, "HOSTCTRL_CLOCK_STATUS", ReadOnly, substruct = false)
+      attach(tokenFireCount, "HOSTCTRL_CLOCK_TOKEN_FIRE_COUNT", ReadOnly, substruct = false)
+      attach(tokenBitsLo, "HOSTCTRL_CLOCK_TOKEN_BITS_LO", ReadOnly, substruct = false)
+      attach(clockInfo.size.U(32.W), "HOSTCTRL_CLOCK_NUM_CLOCKS", ReadOnly, substruct = false)
+    }
     genCRFile()
 
     override def genHeader(base: BigInt, memoryRegions: Map[String, BigInt], sb: StringBuilder): Unit = {

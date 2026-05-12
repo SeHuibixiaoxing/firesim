@@ -77,6 +77,14 @@ void peek_poke_t::peek(std::string_view id, mpz_t &value) {
 
 bool peek_poke_t::is_done() { return simif.read(mmio_addrs.DONE); }
 
+uint32_t peek_poke_t::debug_cycle_horizon() { return read_debug_word(0); }
+
+uint32_t peek_poke_t::debug_status() { return read_debug_word(1); }
+
+uint32_t peek_poke_t::debug_decoupling_mask_lo() { return read_debug_word(2); }
+
+uint32_t peek_poke_t::debug_decoupling_count() { return read_debug_word(3); }
+
 void peek_poke_t::step(size_t n, bool blocking) {
   simif.write(mmio_addrs.STEP, n);
 

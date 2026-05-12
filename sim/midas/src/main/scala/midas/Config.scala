@@ -22,6 +22,7 @@ case object F1ShimHasQSFPPorts        extends Field[Boolean](false)
 case object F1ShimHasPCIMPorts        extends Field[Boolean](false)
 case object MetasimPrintfEnable       extends Field[Boolean](false)
 case object EnableTargetCycleDebug    extends Field[Boolean](false)
+case object EnableHostControlDebug    extends Field[Boolean](false)
 
 // Provides a function to elaborate the top-level platform shim
 case object Platform     extends Field[(Parameters) => PlatformShim]

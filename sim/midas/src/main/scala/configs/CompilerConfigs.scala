@@ -22,6 +22,11 @@ class WithTargetCycleDebug
       true
     })
 
+class WithHostControlDebug
+    extends Config((_, _, _) => { case midas.EnableHostControlDebug =>
+      true
+    })
+
 // MIDAS 2.0 Switches
 class WithMultiCycleRamModels
     extends Config((_, _, _) => { case midas.GenerateMultiCycleRamModels =>

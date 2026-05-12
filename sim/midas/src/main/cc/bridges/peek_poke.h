@@ -66,6 +66,11 @@ public:
    */
   bool is_done();
 
+  uint32_t debug_cycle_horizon();
+  uint32_t debug_status();
+  uint32_t debug_decoupling_mask_lo();
+  uint32_t debug_decoupling_count();
+
   /**
    * Advance the cycle horizon a given number of steps.
    */
@@ -82,6 +87,10 @@ private:
   const PortMap inputs;
   /// Addresses of output ports.
   const PortMap outputs;
+
+  uint32_t read_debug_word(unsigned word_index) {
+    return simif.read(mmio_addrs.PRECISE_PEEKABLE + ((word_index + 1) * sizeof(uint32_t)));
+  }
 
   bool wait_on(size_t flag_addr, double timeout) {
     midas_time_t start = timestamp();

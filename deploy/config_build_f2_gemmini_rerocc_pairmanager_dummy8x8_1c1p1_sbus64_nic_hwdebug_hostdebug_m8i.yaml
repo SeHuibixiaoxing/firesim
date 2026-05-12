@@ -1,0 +1,21 @@
+# Build the 1-core/1-pair dummy8x8 sbus64 NIC hardware-debug target for F2
+# with host-control diagnostics enabled. This uses the smaller m8i builder for
+# a fast control build before larger 4p2c/6p2c AGFIs finish.
+
+build_farm:
+  base_recipe: build-farm-recipes/aws_ec2.yaml
+  recipe_arg_overrides:
+    build_farm_tag: pairdummy8x8sbus64c1p1hwdbgdiag
+    instance_type: m8i.2xlarge
+    ami_id: ami-0d7cdfb6b3ce5b5e0
+    build_instance_market: ondemand
+    spot_interruption_behavior: terminate
+    spot_max_price: ondemand
+    default_build_dir: /home/ubuntu/firesim-build
+
+builds_to_run:
+  - firesim_gemmini_rerocc_pairmanager_dummy8x8_1c1p1_sbus64_nic_hwdebug_hostdebug
+
+agfis_to_share: []
+
+share_with_accounts: {}

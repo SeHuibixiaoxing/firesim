@@ -112,6 +112,25 @@ class PeekPokeBridgeModule(key: PeekPokeKey)(implicit p: Parameters) extends Bri
     genRORegInit((done +: outputPrecisePeekableFlags).reduce(_ && _), "PRECISE_PEEKABLE", 0.U)
 
     val tCycleWouldAdvance = channelDecouplingFlags.reduce(_ && _)
+
+    if (p(midas.EnableHostControlDebug)) {
+      val decouplingFlagsLo = channelDecouplingFlags.take(32).toSeq
+      val decouplingMaskLo  = VecInit(decouplingFlagsLo ++ Seq.fill(32 - decouplingFlagsLo.size)(false.B)).asUInt
+      val status            = Cat(
+        0.U(26.W),
+        reset.asBool,
+        tCycleWouldAdvance,
+        done,
+        step.fire,
+        step.ready,
+        step.valid,
+      )
+
+      attach(cycleHorizon, "HOSTCTRL_PEEKPOKE_CYCLE_HORIZON", ReadOnly, substruct = false)
+      attach(status, "HOSTCTRL_PEEKPOKE_STATUS", ReadOnly, substruct = false)
+      attach(decouplingMaskLo, "HOSTCTRL_PEEKPOKE_DECOUPLING_MASK_LO", ReadOnly, substruct = false)
+      attach(channelDecouplingFlags.size.U(32.W), "HOSTCTRL_PEEKPOKE_DECOUPLING_COUNT", ReadOnly, substruct = false)
+    }
     // tCycleWouldAdvance will be asserted if all inputs have been poked; but only increment
     // tCycle if we've been asked to step (cycleHorizon > 0.U)
     when(tCycleWouldAdvance && cycleHorizon > 0.U) {

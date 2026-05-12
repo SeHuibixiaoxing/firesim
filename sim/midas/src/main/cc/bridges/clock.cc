@@ -33,3 +33,17 @@ uint64_t clockmodule_t::hcycle() {
                   mmio_addrs.hCycle_1,
                   mmio_addrs.hCycle_latch);
 }
+
+uint32_t clockmodule_t::read_debug_word(unsigned word_index) {
+  return simif.read(mmio_addrs.tCycle_latch + ((word_index + 1) * sizeof(uint32_t)));
+}
+
+uint32_t clockmodule_t::debug_status() { return read_debug_word(0); }
+
+uint32_t clockmodule_t::debug_token_fire_count() {
+  return read_debug_word(1);
+}
+
+uint32_t clockmodule_t::debug_token_bits_lo() { return read_debug_word(2); }
+
+uint32_t clockmodule_t::debug_num_clocks() { return read_debug_word(3); }
