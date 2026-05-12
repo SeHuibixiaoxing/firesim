@@ -1,0 +1,25 @@
+# Rebuild the 2-core/6-pair dummy8x8 sbus64 NIC hardware-debug target for F2
+# with host-control diagnostics enabled. This fallback uses a smaller m8i.4xlarge
+# builder plus explicit swap when larger z1d/m8i capacity is unavailable.
+
+build_farm:
+  base_recipe: build-farm-recipes/aws_ec2.yaml
+  recipe_arg_overrides:
+    build_farm_tag: pairdummy8x8sbus64c2p6hwdbgdiag-m8i4swap
+    instance_type: m8i.4xlarge
+    ami_id: ami-0d7cdfb6b3ce5b5e0
+    build_instance_market: ondemand
+    spot_interruption_behavior: terminate
+    spot_max_price: ondemand
+    launch_instances_timeout_minutes: 60
+    build_host_swap_size_gb: 64
+    build_host_swappiness: 10
+    build_host_swapfile_path: /swapfile_firesim_build
+    default_build_dir: /home/ubuntu/firesim-build
+
+builds_to_run:
+  - firesim_gemmini_rerocc_pairmanager_dummy8x8_2c6p6_sbus64_nic_hwdebug_hostdebug
+
+agfis_to_share: []
+
+share_with_accounts: {}
