@@ -22,7 +22,11 @@
 [submodule "sim/cde"]
 	path = sim/cde
 	url = https://github.com/chipsalliance/cde.git
-[submodule "platforms/f2/aws-fpga-firesim-f2"]
-	path = platforms/f2/aws-fpga-firesim-f2
-	url = https://github.com/firesim/aws-fpga-firesim-f2.git
-	branch = rocket
+[submodule "platforms/f2/aws-fpga-firesim-f2/hdk/common/ip"]
+	path = platforms/f2/aws-fpga-firesim-f2/hdk/common/ip
+	url = https://github.com/aws/aws-fpga-resources.git
+	ignore = dirty
+[submodule "platforms/f2/aws-fpga-firesim-f2/hdk/common/shell_stable/hlx"]
+	path = platforms/f2/aws-fpga-firesim-f2/hdk/common/shell_stable/hlx
+	url = https://github.com/aws/aws-fpga-resources.git
+	ignore = dirty

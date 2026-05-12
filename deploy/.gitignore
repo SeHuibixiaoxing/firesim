@@ -4,6 +4,8 @@ switchbuild/switch
 results-build/*
 results-workload/*
 config_*.yaml
+!config_runtime_local_metasim_rerocc_lc_baremetal_cfg32_slot_smoke.yaml
+!config_runtime_local_metasim_rerocc_lc_baremetal_cfg32_slot_smoke_quick.yaml
 backup_config_*.yaml
 generated-topology-diagrams/
 logs/*.log

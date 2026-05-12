@@ -27,7 +27,7 @@ target_config:
   net_bandwidth: 200
   profile_interval: -1
   default_hw_config: firesim_gemmini_rerocc_pairmanager_dummy8x8_1c1p1_sbus64_hwdebug
-  plusarg_passthrough: "+heartbeat-polling-interval=10000000 +trace-min-batch=0"
+  plusarg_passthrough: "+heartbeat-polling-interval=100000000"
 
 tracing:
   enable: yes
