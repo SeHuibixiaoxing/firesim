@@ -75,8 +75,9 @@ class ClockBridgeModule(params: ClockParameters)(implicit p: Parameters) extends
         tokenFireCount := tokenFireCount + 1.U
       }
 
-      val tokenBits   = hPort.clocks.bits.asUInt
-      val tokenBitsLo = if (clockInfo.size >= 32) tokenBits(31, 0) else tokenBits.pad(32)
+      val tokenBits = hPort.clocks.bits.asUInt
+      val tokenBitsLo =
+        if (clockInfo.size >= 32) tokenBits(31, 0) else Cat(0.U((32 - clockInfo.size).W), tokenBits)
       val status      = Cat(
         0.U(27.W),
         reset.asBool,
